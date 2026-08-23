@@ -1,0 +1,108 @@
+// SurakshaMesh perimeter gasket
+// Compressed continuous rounded-rectangle seal sized to the body groove.
+@settings(defaultLengthUnit = mm, kclVersion = 2.0)
+
+import * from "parameters.kcl"
+
+gasketOuterLength = 112.8mm
+gasketOuterWidth = 72.8mm
+gasketOuterRadius = 7.4mm
+gasketInnerLength = 109.2mm
+gasketInnerWidth = 69.2mm
+gasketInnerRadius = 5.6mm
+gasketCompressedHeight = 1.3mm
+
+gasketOuterProfile = sketch(on = XY) {
+  top = line(start = [var 49mm, var 36.4mm], end = [var -49mm, var 36.4mm])
+  topLeft = arc(start = [var -49mm, var 36.4mm], end = [var -56.4mm, var 29mm], center = [var -49mm, var 29mm])
+  left = line(start = [var -56.4mm, var 29mm], end = [var -56.4mm, var -29mm])
+  bottomLeft = arc(start = [var -56.4mm, var -29mm], end = [var -49mm, var -36.4mm], center = [var -49mm, var -29mm])
+  bottom = line(start = [var -49mm, var -36.4mm], end = [var 49mm, var -36.4mm])
+  bottomRight = arc(start = [var 49mm, var -36.4mm], end = [var 56.4mm, var -29mm], center = [var 49mm, var -29mm])
+  right = line(start = [var 56.4mm, var -29mm], end = [var 56.4mm, var 29mm])
+  topRight = arc(start = [var 56.4mm, var 29mm], end = [var 49mm, var 36.4mm], center = [var 49mm, var 29mm])
+  coincident([top.end, topLeft.start])
+  coincident([topLeft.end, left.start])
+  coincident([left.end, bottomLeft.start])
+  coincident([bottomLeft.end, bottom.start])
+  coincident([bottom.end, bottomRight.start])
+  coincident([bottomRight.end, right.start])
+  coincident([right.end, topRight.start])
+  coincident([topRight.end, top.start])
+  horizontal(top)
+  vertical(left)
+  horizontal(bottom)
+  vertical(right)
+  vertical([topLeft.center, topLeft.start])
+  horizontal([topLeft.center, topLeft.end])
+  horizontal([bottomLeft.center, bottomLeft.start])
+  vertical([bottomLeft.center, bottomLeft.end])
+  vertical([bottomRight.center, bottomRight.start])
+  horizontal([bottomRight.center, bottomRight.end])
+  horizontal([topRight.center, topRight.start])
+  vertical([topRight.center, topRight.end])
+  horizontal([topLeft.center, topRight.center])
+  horizontal([bottomLeft.center, bottomRight.center])
+  vertical([topLeft.center, bottomLeft.center])
+  vertical([topRight.center, bottomRight.center])
+  radius(topLeft) == gasketOuterRadius
+  radius(bottomLeft) == gasketOuterRadius
+  radius(bottomRight) == gasketOuterRadius
+  radius(topRight) == gasketOuterRadius
+  horizontalDistance([topLeft.center, topRight.center]) == gasketOuterLength - 2 * gasketOuterRadius
+  verticalDistance([bottomRight.center, topRight.center]) == gasketOuterWidth - 2 * gasketOuterRadius
+  horizontalDistance([ORIGIN, topRight.center]) == gasketOuterLength / 2 - gasketOuterRadius
+  verticalDistance([ORIGIN, topRight.center]) == gasketOuterWidth / 2 - gasketOuterRadius
+}
+gasketOuterRegion = region(segments = [gasketOuterProfile.top, gasketOuterProfile.topLeft], intersectionIndex = -1, direction = CCW)
+gasketOuterSolid = extrude(gasketOuterRegion, length = gasketCompressedHeight, symmetric = true)
+
+gasketInnerProfile = sketch(on = XY) {
+  top = line(start = [var 49mm, var 34.6mm], end = [var -49mm, var 34.6mm])
+  topLeft = arc(start = [var -49mm, var 34.6mm], end = [var -54.6mm, var 29mm], center = [var -49mm, var 29mm])
+  left = line(start = [var -54.6mm, var 29mm], end = [var -54.6mm, var -29mm])
+  bottomLeft = arc(start = [var -54.6mm, var -29mm], end = [var -49mm, var -34.6mm], center = [var -49mm, var -29mm])
+  bottom = line(start = [var -49mm, var -34.6mm], end = [var 49mm, var -34.6mm])
+  bottomRight = arc(start = [var 49mm, var -34.6mm], end = [var 54.6mm, var -29mm], center = [var 49mm, var -29mm])
+  right = line(start = [var 54.6mm, var -29mm], end = [var 54.6mm, var 29mm])
+  topRight = arc(start = [var 54.6mm, var 29mm], end = [var 49mm, var 34.6mm], center = [var 49mm, var 29mm])
+  coincident([top.end, topLeft.start])
+  coincident([topLeft.end, left.start])
+  coincident([left.end, bottomLeft.start])
+  coincident([bottomLeft.end, bottom.start])
+  coincident([bottom.end, bottomRight.start])
+  coincident([bottomRight.end, right.start])
+  coincident([right.end, topRight.start])
+  coincident([topRight.end, top.start])
+  horizontal(top)
+  vertical(left)
+  horizontal(bottom)
+  vertical(right)
+  vertical([topLeft.center, topLeft.start])
+  horizontal([topLeft.center, topLeft.end])
+  horizontal([bottomLeft.center, bottomLeft.start])
+  vertical([bottomLeft.center, bottomLeft.end])
+  vertical([bottomRight.center, bottomRight.start])
+  horizontal([bottomRight.center, bottomRight.end])
+  horizontal([topRight.center, topRight.start])
+  vertical([topRight.center, topRight.end])
+  horizontal([topLeft.center, topRight.center])
+  horizontal([bottomLeft.center, bottomRight.center])
+  vertical([topLeft.center, bottomLeft.center])
+  vertical([topRight.center, bottomRight.center])
+  radius(topLeft) == gasketInnerRadius
+  radius(bottomLeft) == gasketInnerRadius
+  radius(bottomRight) == gasketInnerRadius
+  radius(topRight) == gasketInnerRadius
+  horizontalDistance([topLeft.center, topRight.center]) == gasketInnerLength - 2 * gasketInnerRadius
+  verticalDistance([bottomRight.center, topRight.center]) == gasketInnerWidth - 2 * gasketInnerRadius
+  horizontalDistance([ORIGIN, topRight.center]) == gasketInnerLength / 2 - gasketInnerRadius
+  verticalDistance([ORIGIN, topRight.center]) == gasketInnerWidth / 2 - gasketInnerRadius
+}
+gasketInnerRegion = region(segments = [gasketInnerProfile.top, gasketInnerProfile.topLeft], intersectionIndex = -1, direction = CCW)
+gasketInnerCutter = extrude(gasketInnerRegion, length = gasketCompressedHeight + 0.4mm, symmetric = true)
+gasketRing = subtract([gasketOuterSolid], tools = [gasketInnerCutter])
+
+constructionHidden = hide([gasketOuterProfile, gasketInnerProfile])
+
+export perimeterGasket = appearance(gasketRing, color = sealColor, metalness = 0, roughness = 78)

@@ -1,0 +1,17 @@
+// Unit cylinder primitive
+// Origin-centered solver-sketch cylinder for bosses, holes, and hardware.
+@settings(defaultLengthUnit = mm, kclVersion = 2.0)
+
+unitCylinderSketch = sketch(on = XY) {
+  centerPoint = point(at = [var 0mm, var 0mm])
+  outerCircle = circle(start = [var 0.5mm, var 0mm], center = [var 0mm, var 0mm])
+  coincident([centerPoint, ORIGIN])
+  coincident([outerCircle.center, centerPoint])
+  horizontal([outerCircle.center, outerCircle.start])
+  diameter(outerCircle) == 1mm
+}
+unitCylinderRegion = region(segments = [unitCylinderSketch.outerCircle])
+unitCylinderBody = extrude(unitCylinderRegion, length = 1mm, symmetric = true)
+unitCylinderSketchHidden = hide(unitCylinderSketch)
+
+export unitCylinder = unitCylinderBody

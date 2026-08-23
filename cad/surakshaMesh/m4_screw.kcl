@@ -1,0 +1,16 @@
+// M4 enclosure screw envelope
+// Cosmetic thread representation with cylindrical recessed head.
+@settings(defaultLengthUnit = mm, kclVersion = 2.0)
+
+import unitCylinder from "unit_cylinder.kcl"
+import * from "parameters.kcl"
+
+screwHead = clone(unitCylinder)
+  |> scale(x = screwHeadDiameter / 1mm, y = screwHeadDiameter / 1mm, z = 3.2mm / 1mm, global = true)
+  |> appearance(color = hardwareColor, metalness = 92, roughness = 22)
+screwShank = clone(unitCylinder)
+  |> scale(x = screwDiameter / 1mm, y = screwDiameter / 1mm, z = 18mm / 1mm, global = true)
+  |> translate(z = -10.6mm, global = true)
+  |> appearance(color = hardwareColor, metalness = 92, roughness = 22)
+
+export m4Screw = union([screwHead, screwShank])

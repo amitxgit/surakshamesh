@@ -1,0 +1,18 @@
+// LoRa radio module envelope
+// Bought-part clearance model with antenna-side connector keep-out.
+@settings(defaultLengthUnit = mm, kclVersion = 2.0)
+
+import unitBox from "unit_box.kcl"
+import unitCylinder from "unit_cylinder.kcl"
+import * from "parameters.kcl"
+
+radioBoard = clone(unitBox)
+  |> scale(x = loraLength / 1mm, y = loraWidth / 1mm, z = loraEnvelopeHeight / 1mm, global = true)
+  |> appearance(color = radioColor, metalness = 10, roughness = 58)
+antennaPigtailKeepout = clone(unitCylinder)
+  |> scale(x = 7mm / 1mm, y = 7mm / 1mm, z = 12mm / 1mm, global = true)
+  |> rotate(axis = Y, angle = 90deg, global = true)
+  |> translate(x = loraLength / 2 + 5mm, global = true)
+  |> appearance(color = hardwareColor, metalness = 68, roughness = 32)
+
+export loraEnvelope = flatten([radioBoard, antennaPigtailKeepout])

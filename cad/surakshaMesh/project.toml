@@ -1,0 +1,10 @@
+title = "surakshaMesh"
+default_file = "main.kcl"
+
+[settings.app]
+[settings.meta]
+id = "2eee5ee7-8176-44a1-99d0-de9df6e866f6"
+
+[settings.modeling]
+[cloud."zoo.dev"]
+project_id = "89a251e5-95cc-47c8-b4bc-7ddcc4716baa"

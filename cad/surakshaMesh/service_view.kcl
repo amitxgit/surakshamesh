@@ -1,0 +1,89 @@
+// SurakshaMesh service view
+// Exploded maintenance view exposing the tray, electronics, battery cradle, gasket, and lid interfaces.
+@settings(defaultLengthUnit = mm, kclVersion = 2.0)
+
+import lowerEnclosure from "lower_enclosure.kcl"
+import enclosureLid from "lid.kcl"
+import electronicsTray from "electronics_tray.kcl"
+import batteryRetainer from "battery_retainer.kcl"
+import perimeterGasket from "gasket.kcl"
+import esp32Envelope from "esp32_envelope.kcl"
+import loraEnvelope from "lora_envelope.kcl"
+import imuEnvelope from "imu_envelope.kcl"
+import batteryCell from "battery_cell.kcl"
+import smaBulkhead from "sma_bulkhead.kcl"
+import m4Screw from "m4_screw.kcl"
+import * from "parameters.kcl"
+
+trayLift = 27mm
+batteryLift = 14mm
+lidLiftZ = 50mm
+boardSupportZ = trayAssemblyZ + trayThickness / 2 + trayStandoffHeight
+
+lowerPart = lowerEnclosure
+trayPart = electronicsTray
+  |> translate(y = trayCenterY, z = trayAssemblyZ + trayLift, global = true)
+esp32Part = esp32Envelope
+  |> translate(
+       x = esp32CenterX,
+       y = trayCenterY + esp32CenterY,
+       z = boardSupportZ + esp32EnvelopeHeight / 2 + trayLift,
+       global = true,
+     )
+loraPart = loraEnvelope
+  |> translate(
+       x = loraCenterX,
+       y = trayCenterY + loraCenterY,
+       z = boardSupportZ + loraEnvelopeHeight / 2 + trayLift,
+       global = true,
+     )
+imuPart = imuEnvelope
+  |> translate(
+       x = imuCenterX,
+       y = trayCenterY + imuCenterY,
+       z = trayAssemblyZ + trayThickness / 2 + 2mm + imuEnvelopeHeight / 2 + trayLift,
+       global = true,
+     )
+retainerPart = batteryRetainer
+  |> translate(y = batteryCenterY, z = batteryRetainerAssemblyZ + batteryLift, global = true)
+batteryPart = batteryCell
+  |> translate(
+       y = batteryCenterY,
+       z = batteryRetainerAssemblyZ + batteryCenterLocalZ + batteryLift,
+       global = true,
+     )
+gasketPart = perimeterGasket
+  |> translate(z = 28mm, global = true)
+lidPart = enclosureLid
+  |> translate(z = lidLiftZ, global = true)
+smaPart = smaBulkhead
+  |> translate(x = outerLength / 2, y = smaPortY, z = smaPortZ, global = true)
+
+serviceScrewZ = lidLiftZ + screwAssemblyZ - lidAssemblyZ
+screwFrontLeft = clone(m4Screw)
+  |> translate(x = -screwCenterX, y = -screwCenterY, z = serviceScrewZ, global = true)
+screwFrontRight = clone(m4Screw)
+  |> translate(x = screwCenterX, y = -screwCenterY, z = serviceScrewZ, global = true)
+screwBackLeft = clone(m4Screw)
+  |> translate(x = -screwCenterX, y = screwCenterY, z = serviceScrewZ, global = true)
+screwBackRight = clone(m4Screw)
+  |> translate(x = screwCenterX, y = screwCenterY, z = serviceScrewZ, global = true)
+
+serviceView = flatten([
+  lowerPart,
+  trayPart,
+  esp32Part,
+  loraPart,
+  imuPart,
+  retainerPart,
+  batteryPart,
+  gasketPart,
+  lidPart,
+  smaPart,
+  screwFrontLeft,
+  screwFrontRight,
+  screwBackLeft,
+  screwBackRight
+])
+
+serviceView

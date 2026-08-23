@@ -1,0 +1,18 @@
+// SMA bulkhead connector envelope
+// Panel connector with threaded barrel and retaining flange envelope.
+@settings(defaultLengthUnit = mm, kclVersion = 2.0)
+
+import unitCylinder from "unit_cylinder.kcl"
+import * from "parameters.kcl"
+
+threadedBarrel = clone(unitCylinder)
+  |> scale(x = 6.35mm / 1mm, y = 6.35mm / 1mm, z = 18mm / 1mm, global = true)
+  |> rotate(axis = Y, angle = 90deg, global = true)
+  |> appearance(color = hardwareColor, metalness = 88, roughness = 24)
+retainingFlange = clone(unitCylinder)
+  |> scale(x = 11mm / 1mm, y = 11mm / 1mm, z = 2mm / 1mm, global = true)
+  |> rotate(axis = Y, angle = 90deg, global = true)
+  |> translate(x = 3mm, global = true)
+  |> appearance(color = hardwareColor, metalness = 88, roughness = 24)
+
+export smaBulkhead = union([threadedBarrel, retainingFlange])
