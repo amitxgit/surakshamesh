@@ -1,0 +1,85 @@
+// SurakshaMesh field sensor assembly
+// Assembled rugged enclosure with serviceable internals, gasket, connector, and recessed M4 hardware.
+@settings(defaultLengthUnit = mm, kclVersion = 2.0)
+
+import lowerEnclosure from "lower_enclosure.kcl"
+import enclosureLid from "lid.kcl"
+import electronicsTray from "electronics_tray.kcl"
+import batteryRetainer from "battery_retainer.kcl"
+import perimeterGasket from "gasket.kcl"
+import esp32Envelope from "esp32_envelope.kcl"
+import loraEnvelope from "lora_envelope.kcl"
+import imuEnvelope from "imu_envelope.kcl"
+import batteryCell from "battery_cell.kcl"
+import smaBulkhead from "sma_bulkhead.kcl"
+import m4Screw from "m4_screw.kcl"
+import * from "parameters.kcl"
+
+lowerPart = lowerEnclosure
+lidPart = enclosureLid
+  |> translate(z = lidAssemblyZ, global = true)
+trayPart = electronicsTray
+  |> translate(y = trayCenterY, z = trayAssemblyZ, global = true)
+retainerPart = batteryRetainer
+  |> translate(y = batteryCenterY, z = batteryRetainerAssemblyZ, global = true)
+gasketPart = perimeterGasket
+  |> translate(z = bodyTopZ - gasketGrooveDepth + 0.65mm, global = true)
+
+boardSupportZ = trayAssemblyZ + trayThickness / 2 + trayStandoffHeight
+esp32Part = esp32Envelope
+  |> translate(
+       x = esp32CenterX,
+       y = trayCenterY + esp32CenterY,
+       z = boardSupportZ + esp32EnvelopeHeight / 2,
+       global = true,
+     )
+loraPart = loraEnvelope
+  |> translate(
+       x = loraCenterX,
+       y = trayCenterY + loraCenterY,
+       z = boardSupportZ + loraEnvelopeHeight / 2,
+       global = true,
+     )
+imuPart = imuEnvelope
+  |> translate(
+       x = imuCenterX,
+       y = trayCenterY + imuCenterY,
+       z = trayAssemblyZ + trayThickness / 2 + 2mm + imuEnvelopeHeight / 2,
+       global = true,
+     )
+batteryPart = batteryCell
+  |> translate(
+       y = batteryCenterY,
+       z = batteryRetainerAssemblyZ + batteryCenterLocalZ,
+       global = true,
+     )
+smaPart = smaBulkhead
+  |> translate(x = outerLength / 2, y = smaPortY, z = smaPortZ, global = true)
+
+screwFrontLeft = clone(m4Screw)
+  |> translate(x = -screwCenterX, y = -screwCenterY, z = screwAssemblyZ, global = true)
+screwFrontRight = clone(m4Screw)
+  |> translate(x = screwCenterX, y = -screwCenterY, z = screwAssemblyZ, global = true)
+screwBackLeft = clone(m4Screw)
+  |> translate(x = -screwCenterX, y = screwCenterY, z = screwAssemblyZ, global = true)
+screwBackRight = clone(m4Screw)
+  |> translate(x = screwCenterX, y = screwCenterY, z = screwAssemblyZ, global = true)
+
+export surakshaMeshAssembly = flatten([
+  lowerPart,
+  lidPart,
+  trayPart,
+  retainerPart,
+  gasketPart,
+  esp32Part,
+  loraPart,
+  imuPart,
+  batteryPart,
+  smaPart,
+  screwFrontLeft,
+  screwFrontRight,
+  screwBackLeft,
+  screwBackRight
+])
+
+surakshaMeshAssembly

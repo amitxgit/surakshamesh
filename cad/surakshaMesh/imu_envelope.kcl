@@ -1,0 +1,12 @@
+// IMU sensor envelope
+// Rigid central sensor board with a defined mounting plane.
+@settings(defaultLengthUnit = mm, kclVersion = 2.0)
+
+import unitBox from "unit_box.kcl"
+import * from "parameters.kcl"
+
+imuBoard = clone(unitBox)
+  |> scale(x = imuLength / 1mm, y = imuWidth / 1mm, z = imuEnvelopeHeight / 1mm, global = true)
+  |> appearance(color = imuColor, metalness = 6, roughness = 55)
+
+export imuEnvelope = imuBoard

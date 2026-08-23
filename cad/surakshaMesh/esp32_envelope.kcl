@@ -1,0 +1,16 @@
+// ESP32 development board envelope
+// Bought-part clearance model with connector keep-out volume.
+@settings(defaultLengthUnit = mm, kclVersion = 2.0)
+
+import unitBox from "unit_box.kcl"
+import * from "parameters.kcl"
+
+boardEnvelope = clone(unitBox)
+  |> scale(x = esp32Length / 1mm, y = esp32Width / 1mm, z = esp32EnvelopeHeight / 1mm, global = true)
+  |> appearance(color = pcbColor, metalness = 8, roughness = 62)
+usbKeepout = clone(unitBox)
+  |> scale(x = 10mm / 1mm, y = 12mm / 1mm, z = 5mm / 1mm, global = true)
+  |> translate(x = -esp32Length / 2 - 3mm, z = -1mm, global = true)
+  |> appearance(color = hardwareColor, metalness = 65, roughness = 34)
+
+export esp32Envelope = flatten([boardEnvelope, usbKeepout])

@@ -1,0 +1,13 @@
+// Cylindrical lithium-ion cell envelope
+// Bought-part model for a 19 mm by 70 mm protected cell.
+@settings(defaultLengthUnit = mm, kclVersion = 2.0)
+
+import unitCylinder from "unit_cylinder.kcl"
+import * from "parameters.kcl"
+
+cellBody = clone(unitCylinder)
+  |> scale(x = batteryDiameter / 1mm, y = batteryDiameter / 1mm, z = batteryLength / 1mm, global = true)
+  |> rotate(axis = Y, angle = 90deg, global = true)
+  |> appearance(color = batteryColor, metalness = 18, roughness = 48)
+
+export batteryCell = cellBody

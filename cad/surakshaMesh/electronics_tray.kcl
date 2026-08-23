@@ -1,0 +1,158 @@
+// SurakshaMesh electronics tray
+// Removable rigid carrier for ESP32, LoRa, and centrally referenced IMU hardware.
+@settings(defaultLengthUnit = mm, kclVersion = 2.0)
+
+import unitBox from "unit_box.kcl"
+import unitCylinder from "unit_cylinder.kcl"
+import * from "parameters.kcl"
+
+trayProfile = sketch(on = XY) {
+  top = line(start = [var 39mm, var 18mm], end = [var -39mm, var 18mm])
+  topLeft = arc(start = [var -39mm, var 18mm], end = [var -44mm, var 13mm], center = [var -39mm, var 13mm])
+  left = line(start = [var -44mm, var 13mm], end = [var -44mm, var -13mm])
+  bottomLeft = arc(start = [var -44mm, var -13mm], end = [var -39mm, var -18mm], center = [var -39mm, var -13mm])
+  bottom = line(start = [var -39mm, var -18mm], end = [var 39mm, var -18mm])
+  bottomRight = arc(start = [var 39mm, var -18mm], end = [var 44mm, var -13mm], center = [var 39mm, var -13mm])
+  right = line(start = [var 44mm, var -13mm], end = [var 44mm, var 13mm])
+  topRight = arc(start = [var 44mm, var 13mm], end = [var 39mm, var 18mm], center = [var 39mm, var 13mm])
+  coincident([top.end, topLeft.start])
+  coincident([topLeft.end, left.start])
+  coincident([left.end, bottomLeft.start])
+  coincident([bottomLeft.end, bottom.start])
+  coincident([bottom.end, bottomRight.start])
+  coincident([bottomRight.end, right.start])
+  coincident([right.end, topRight.start])
+  coincident([topRight.end, top.start])
+  horizontal(top)
+  vertical(left)
+  horizontal(bottom)
+  vertical(right)
+  vertical([topLeft.center, topLeft.start])
+  horizontal([topLeft.center, topLeft.end])
+  horizontal([bottomLeft.center, bottomLeft.start])
+  vertical([bottomLeft.center, bottomLeft.end])
+  vertical([bottomRight.center, bottomRight.start])
+  horizontal([bottomRight.center, bottomRight.end])
+  horizontal([topRight.center, topRight.start])
+  vertical([topRight.center, topRight.end])
+  horizontal([topLeft.center, topRight.center])
+  horizontal([bottomLeft.center, bottomRight.center])
+  vertical([topLeft.center, bottomLeft.center])
+  vertical([topRight.center, bottomRight.center])
+  radius(topLeft) == trayCornerRadius
+  radius(bottomLeft) == trayCornerRadius
+  radius(bottomRight) == trayCornerRadius
+  radius(topRight) == trayCornerRadius
+  horizontalDistance([topLeft.center, topRight.center]) == trayLength - 2 * trayCornerRadius
+  verticalDistance([bottomRight.center, topRight.center]) == trayWidth - 2 * trayCornerRadius
+  horizontalDistance([ORIGIN, topRight.center]) == trayLength / 2 - trayCornerRadius
+  verticalDistance([ORIGIN, topRight.center]) == trayWidth / 2 - trayCornerRadius
+}
+trayRegion = region(segments = [trayProfile.top, trayProfile.topLeft], intersectionIndex = -1, direction = CCW)
+trayPlate = extrude(trayRegion, length = trayThickness, symmetric = true)
+
+standoffLength = trayStandoffHeight + 0.25mm
+standoffCenterZ = trayThickness / 2 + trayStandoffHeight / 2 - 0.125mm
+
+esp32PostFrontLeft = clone(unitCylinder)
+  |> scale(x = 5mm / 1mm, y = 5mm / 1mm, z = standoffLength / 1mm, global = true)
+  |> translate(x = -34mm, y = -7mm, z = standoffCenterZ, global = true)
+esp32PostFrontRight = clone(esp32PostFrontLeft)
+  |> translate(x = 30mm, global = true)
+esp32PostBackLeft = clone(esp32PostFrontLeft)
+  |> translate(y = 18mm, global = true)
+esp32PostBackRight = clone(esp32PostFrontRight)
+  |> translate(y = 18mm, global = true)
+
+loraPostFrontLeft = clone(unitCylinder)
+  |> scale(x = 5mm / 1mm, y = 5mm / 1mm, z = standoffLength / 1mm, global = true)
+  |> translate(x = 14mm, y = -4mm, z = standoffCenterZ, global = true)
+loraPostFrontRight = clone(loraPostFrontLeft)
+  |> translate(x = 22mm, global = true)
+loraPostBackLeft = clone(loraPostFrontLeft)
+  |> translate(y = 14mm, global = true)
+loraPostBackRight = clone(loraPostFrontRight)
+  |> translate(y = 14mm, global = true)
+
+imuPlatform = clone(unitBox)
+  |> scale(x = imuPlatformLength / 1mm, y = 12mm / 1mm, z = 2mm / 1mm, global = true)
+  |> translate(x = imuCenterX, y = -12mm, z = trayThickness / 2 + 0.9mm, global = true)
+imuXReference = clone(unitBox)
+  |> scale(x = 12mm / 1mm, y = 1mm / 1mm, z = 0.7mm / 1mm, global = true)
+  |> translate(x = imuCenterX, y = -12mm, z = trayThickness / 2 + 1.9mm, global = true)
+imuYReference = clone(unitBox)
+  |> scale(x = 1mm / 1mm, y = 8mm / 1mm, z = 0.7mm / 1mm, global = true)
+  |> translate(x = imuCenterX - 4mm, y = -10mm, z = trayThickness / 2 + 1.9mm, global = true)
+
+trayMountCutterBase = clone(unitCylinder)
+  |> scale(x = trayMountHoleDiameter / 1mm, y = trayMountHoleDiameter / 1mm, z = 4mm / 1mm, global = true)
+  |> translate(x = -trayMountX, y = -trayMountY, global = true)
+trayMountCutterFrontRight = clone(trayMountCutterBase)
+  |> translate(x = 2 * trayMountX, global = true)
+trayMountCutterBackLeft = clone(trayMountCutterBase)
+  |> translate(y = 2 * trayMountY, global = true)
+trayMountCutterBackRight = clone(trayMountCutterFrontRight)
+  |> translate(y = 2 * trayMountY, global = true)
+
+pilotLength = trayStandoffHeight + 0.8mm
+pilotCenterZ = trayThickness / 2 + trayStandoffHeight / 2
+esp32PilotFrontLeft = clone(unitCylinder)
+  |> scale(x = 2.4mm / 1mm, y = 2.4mm / 1mm, z = pilotLength / 1mm, global = true)
+  |> translate(x = -34mm, y = -7mm, z = pilotCenterZ, global = true)
+esp32PilotFrontRight = clone(esp32PilotFrontLeft)
+  |> translate(x = 30mm, global = true)
+esp32PilotBackLeft = clone(esp32PilotFrontLeft)
+  |> translate(y = 18mm, global = true)
+esp32PilotBackRight = clone(esp32PilotFrontRight)
+  |> translate(y = 18mm, global = true)
+
+loraPilotFrontLeft = clone(unitCylinder)
+  |> scale(x = 2.4mm / 1mm, y = 2.4mm / 1mm, z = pilotLength / 1mm, global = true)
+  |> translate(x = 14mm, y = -4mm, z = pilotCenterZ, global = true)
+loraPilotFrontRight = clone(loraPilotFrontLeft)
+  |> translate(x = 22mm, global = true)
+loraPilotBackLeft = clone(loraPilotFrontLeft)
+  |> translate(y = 14mm, global = true)
+loraPilotBackRight = clone(loraPilotFrontRight)
+  |> translate(y = 14mm, global = true)
+
+imuPilotLeft = clone(unitCylinder)
+  |> scale(x = 2.2mm / 1mm, y = 2.2mm / 1mm, z = 4mm / 1mm, global = true)
+  |> translate(x = imuCenterX - imuMountSpanX / 2, y = -12mm, z = trayThickness / 2 + 1mm, global = true)
+imuPilotRight = clone(imuPilotLeft)
+  |> translate(x = imuMountSpanX, global = true)
+
+trayPlateCut1 = subtract([trayPlate], tools = [trayMountCutterBase])
+trayPlateCut2 = subtract([trayPlateCut1], tools = [trayMountCutterFrontRight])
+trayPlateCut3 = subtract([trayPlateCut2], tools = [trayMountCutterBackLeft])
+trayPlateCut = subtract([trayPlateCut3], tools = [trayMountCutterBackRight])
+
+esp32PostFrontLeftCut = subtract([esp32PostFrontLeft], tools = [esp32PilotFrontLeft])
+esp32PostFrontRightCut = subtract([esp32PostFrontRight], tools = [esp32PilotFrontRight])
+esp32PostBackLeftCut = subtract([esp32PostBackLeft], tools = [esp32PilotBackLeft])
+esp32PostBackRightCut = subtract([esp32PostBackRight], tools = [esp32PilotBackRight])
+loraPostFrontLeftCut = subtract([loraPostFrontLeft], tools = [loraPilotFrontLeft])
+loraPostFrontRightCut = subtract([loraPostFrontRight], tools = [loraPilotFrontRight])
+loraPostBackLeftCut = subtract([loraPostBackLeft], tools = [loraPilotBackLeft])
+loraPostBackRightCut = subtract([loraPostBackRight], tools = [loraPilotBackRight])
+
+imuPlatformCut1 = subtract([imuPlatform], tools = [imuPilotLeft])
+imuPlatformCut = subtract([imuPlatformCut1], tools = [imuPilotRight])
+
+trayBodies = flatten([
+  trayPlateCut,
+  esp32PostFrontLeftCut,
+  esp32PostFrontRightCut,
+  esp32PostBackLeftCut,
+  esp32PostBackRightCut,
+  loraPostFrontLeftCut,
+  loraPostFrontRightCut,
+  loraPostBackLeftCut,
+  loraPostBackRightCut,
+  imuPlatformCut,
+  imuXReference,
+  imuYReference
+])
+trayProfileHidden = hide(trayProfile)
+
+export electronicsTray = appearance(trayBodies, color = trayColor, metalness = 10, roughness = 54)

@@ -1,0 +1,129 @@
+// SurakshaMesh enclosure parameters
+// Shared dimensions, fit allowances, hardware, and assembly placement.
+@settings(defaultLengthUnit = mm, kclVersion = 2.0)
+
+export outerLength = 120mm
+export outerWidth = 80mm
+export lowerBodyHeight = 35mm
+export lidPlateThickness = 5mm
+export wallThickness = 3mm
+export floorThickness = 3.4mm
+export outerCornerRadius = 11mm
+export csgOverlap = 0.35mm
+
+export bodyBottomZ = -lowerBodyHeight / 2
+export bodyTopZ = lowerBodyHeight / 2
+export innerLength = outerLength - 2 * wallThickness
+export innerWidth = outerWidth - 2 * wallThickness
+export innerCornerRadius = outerCornerRadius - wallThickness
+
+export sealFlangeOuterLength = 116mm
+export sealFlangeOuterWidth = 76mm
+export sealFlangeOuterRadius = 9mm
+export sealFlangeInnerLength = 106mm
+export sealFlangeInnerWidth = 66mm
+export sealFlangeInnerRadius = 4mm
+export sealFlangeHeight = 3.7mm
+
+export gasketGrooveOuterLength = 113mm
+export gasketGrooveOuterWidth = 73mm
+export gasketGrooveOuterRadius = 7.5mm
+export gasketGrooveInnerLength = 109mm
+export gasketGrooveInnerWidth = 69mm
+export gasketGrooveInnerRadius = 5.5mm
+export gasketGrooveDepth = 1.2mm
+export gasketNominalWidth = 2mm
+
+export lidSkirtOuterLength = 105.2mm
+export lidSkirtOuterWidth = 65.2mm
+export lidSkirtOuterRadius = 3.6mm
+export lidSkirtInnerLength = 100.8mm
+export lidSkirtInnerWidth = 60.8mm
+export lidSkirtInnerRadius = 1.4mm
+export lidSkirtDepth = 3.5mm
+export lidOverlap = 3.5mm
+
+export compressionBeadOuterLength = 111.8mm
+export compressionBeadOuterWidth = 71.8mm
+export compressionBeadOuterRadius = 6.9mm
+export compressionBeadInnerLength = 110.2mm
+export compressionBeadInnerWidth = 70.2mm
+export compressionBeadInnerRadius = 6.1mm
+export compressionBeadHeight = 0.6mm
+
+export screwDiameter = 4mm
+export screwClearanceDiameter = 4.5mm
+export screwBossDiameter = 11mm
+export screwBossFootDiameter = 16mm
+export screwInsertPocketDiameter = 5.6mm
+export screwHeadDiameter = 8mm
+export screwCounterboreDiameter = 9mm
+export screwCounterboreDepth = 3.2mm
+export screwCenterX = 48mm
+export screwCenterY = 28mm
+
+export trayLength = 88mm
+export trayWidth = 36mm
+export trayCornerRadius = 5mm
+export trayThickness = 2.5mm
+export trayStandoffHeight = 4mm
+export trayMountPostDiameter = 6.5mm
+export trayMountHoleDiameter = 3.3mm
+export trayCenterY = 8mm
+export trayMountX = 40mm
+export trayMountY = 15mm
+export trayAssemblyZ = bodyBottomZ + floorThickness + 5.5mm + trayThickness / 2
+
+export esp32Length = 52mm
+export esp32Width = 27mm
+export esp32EnvelopeHeight = 8mm
+export esp32CenterX = -19mm
+export esp32CenterY = 3mm
+export esp32MountSpanX = 42mm
+export esp32MountSpanY = 22mm
+
+export loraLength = 34mm
+export loraWidth = 23mm
+export loraEnvelopeHeight = 8mm
+export loraCenterX = 27mm
+export loraCenterY = 4mm
+export loraMountSpanX = 24mm
+export loraMountSpanY = 18mm
+
+export imuLength = 18mm
+export imuWidth = 14mm
+export imuEnvelopeHeight = 4mm
+export imuCenterX = 1mm
+export imuCenterY = -11mm
+export imuPlatformLength = 20mm
+export imuPlatformWidth = 14mm
+export imuMountSpanX = 14mm
+
+export batteryDiameter = 19mm
+export batteryLength = 70mm
+export batteryClearanceDiameter = 19.8mm
+export batteryRetainerLength = 78mm
+export batteryRetainerWidth = 23mm
+export batteryCenterY = -25mm
+export batteryCenterLocalZ = 10.5mm
+export batteryRetainerAssemblyZ = bodyBottomZ + floorThickness + 1.5mm
+export batteryMountX = 31mm
+
+export smaPanelHoleDiameter = 6.5mm
+export smaPortY = 0mm
+export smaPortZ = 0mm
+export smaGuardOffsetY = 11mm
+
+export lidAssemblyZ = bodyTopZ + 0.75mm
+export screwAssemblyZ = bodyTopZ + lidPlateThickness - 1.6mm
+
+export enclosureColor = "#243746"
+export lidColor = "#304E63"
+export trayColor = "#D08B32"
+export retainerColor = "#536978"
+export pcbColor = "#247A55"
+export radioColor = "#275E9B"
+export imuColor = "#D7A928"
+export batteryColor = "#B76A32"
+export hardwareColor = "#B8C0C7"
+export sealColor = "#252525"

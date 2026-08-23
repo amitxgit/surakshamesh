@@ -1,0 +1,450 @@
+// SurakshaMesh lower enclosure
+// Rugged hollow body with sealing flange, insert bosses, ribs, tray mounts, and protected SMA port.
+@settings(defaultLengthUnit = mm, kclVersion = 2.0)
+
+import unitBox from "unit_box.kcl"
+import unitCylinder from "unit_cylinder.kcl"
+import * from "parameters.kcl"
+
+outerProfile = sketch(on = XY) {
+  top = line(start = [var 49mm, var 40mm], end = [var -49mm, var 40mm])
+  topLeft = arc(start = [var -49mm, var 40mm], end = [var -60mm, var 29mm], center = [var -49mm, var 29mm])
+  left = line(start = [var -60mm, var 29mm], end = [var -60mm, var -29mm])
+  bottomLeft = arc(start = [var -60mm, var -29mm], end = [var -49mm, var -40mm], center = [var -49mm, var -29mm])
+  bottom = line(start = [var -49mm, var -40mm], end = [var 49mm, var -40mm])
+  bottomRight = arc(start = [var 49mm, var -40mm], end = [var 60mm, var -29mm], center = [var 49mm, var -29mm])
+  right = line(start = [var 60mm, var -29mm], end = [var 60mm, var 29mm])
+  topRight = arc(start = [var 60mm, var 29mm], end = [var 49mm, var 40mm], center = [var 49mm, var 29mm])
+  coincident([top.end, topLeft.start])
+  coincident([topLeft.end, left.start])
+  coincident([left.end, bottomLeft.start])
+  coincident([bottomLeft.end, bottom.start])
+  coincident([bottom.end, bottomRight.start])
+  coincident([bottomRight.end, right.start])
+  coincident([right.end, topRight.start])
+  coincident([topRight.end, top.start])
+  horizontal(top)
+  vertical(left)
+  horizontal(bottom)
+  vertical(right)
+  vertical([topLeft.center, topLeft.start])
+  horizontal([topLeft.center, topLeft.end])
+  horizontal([bottomLeft.center, bottomLeft.start])
+  vertical([bottomLeft.center, bottomLeft.end])
+  vertical([bottomRight.center, bottomRight.start])
+  horizontal([bottomRight.center, bottomRight.end])
+  horizontal([topRight.center, topRight.start])
+  vertical([topRight.center, topRight.end])
+  horizontal([topLeft.center, topRight.center])
+  horizontal([bottomLeft.center, bottomRight.center])
+  vertical([topLeft.center, bottomLeft.center])
+  vertical([topRight.center, bottomRight.center])
+  radius(topLeft) == outerCornerRadius
+  radius(bottomLeft) == outerCornerRadius
+  radius(bottomRight) == outerCornerRadius
+  radius(topRight) == outerCornerRadius
+  horizontalDistance([topLeft.center, topRight.center]) == outerLength - 2 * outerCornerRadius
+  verticalDistance([bottomRight.center, topRight.center]) == outerWidth - 2 * outerCornerRadius
+  horizontalDistance([ORIGIN, topRight.center]) == outerLength / 2 - outerCornerRadius
+  verticalDistance([ORIGIN, topRight.center]) == outerWidth / 2 - outerCornerRadius
+}
+outerRegion = region(segments = [outerProfile.top, outerProfile.topLeft], intersectionIndex = -1, direction = CCW)
+outerBody = extrude(outerRegion, length = lowerBodyHeight, symmetric = true)
+
+cavityPlane = {
+  origin = [0mm, 0mm, bodyBottomZ + floorThickness],
+  xAxis = [1, 0, 0],
+  yAxis = [0, 1, 0]
+}
+cavityProfile = sketch(on = cavityPlane) {
+  top = line(start = [var 49mm, var 37mm], end = [var -49mm, var 37mm])
+  topLeft = arc(start = [var -49mm, var 37mm], end = [var -57mm, var 29mm], center = [var -49mm, var 29mm])
+  left = line(start = [var -57mm, var 29mm], end = [var -57mm, var -29mm])
+  bottomLeft = arc(start = [var -57mm, var -29mm], end = [var -49mm, var -37mm], center = [var -49mm, var -29mm])
+  bottom = line(start = [var -49mm, var -37mm], end = [var 49mm, var -37mm])
+  bottomRight = arc(start = [var 49mm, var -37mm], end = [var 57mm, var -29mm], center = [var 49mm, var -29mm])
+  right = line(start = [var 57mm, var -29mm], end = [var 57mm, var 29mm])
+  topRight = arc(start = [var 57mm, var 29mm], end = [var 49mm, var 37mm], center = [var 49mm, var 29mm])
+  coincident([top.end, topLeft.start])
+  coincident([topLeft.end, left.start])
+  coincident([left.end, bottomLeft.start])
+  coincident([bottomLeft.end, bottom.start])
+  coincident([bottom.end, bottomRight.start])
+  coincident([bottomRight.end, right.start])
+  coincident([right.end, topRight.start])
+  coincident([topRight.end, top.start])
+  horizontal(top)
+  vertical(left)
+  horizontal(bottom)
+  vertical(right)
+  vertical([topLeft.center, topLeft.start])
+  horizontal([topLeft.center, topLeft.end])
+  horizontal([bottomLeft.center, bottomLeft.start])
+  vertical([bottomLeft.center, bottomLeft.end])
+  vertical([bottomRight.center, bottomRight.start])
+  horizontal([bottomRight.center, bottomRight.end])
+  horizontal([topRight.center, topRight.start])
+  vertical([topRight.center, topRight.end])
+  horizontal([topLeft.center, topRight.center])
+  horizontal([bottomLeft.center, bottomRight.center])
+  vertical([topLeft.center, bottomLeft.center])
+  vertical([topRight.center, bottomRight.center])
+  radius(topLeft) == innerCornerRadius
+  radius(bottomLeft) == innerCornerRadius
+  radius(bottomRight) == innerCornerRadius
+  radius(topRight) == innerCornerRadius
+  horizontalDistance([topLeft.center, topRight.center]) == innerLength - 2 * innerCornerRadius
+  verticalDistance([bottomRight.center, topRight.center]) == innerWidth - 2 * innerCornerRadius
+  horizontalDistance([ORIGIN, topRight.center]) == innerLength / 2 - innerCornerRadius
+  verticalDistance([ORIGIN, topRight.center]) == innerWidth / 2 - innerCornerRadius
+}
+cavityRegion = region(segments = [cavityProfile.top, cavityProfile.topLeft], intersectionIndex = -1, direction = CCW)
+cavityCutter = extrude(cavityRegion, length = lowerBodyHeight - floorThickness + csgOverlap)
+
+sealPlane = {
+  origin = [0mm, 0mm, bodyTopZ - sealFlangeHeight],
+  xAxis = [1, 0, 0],
+  yAxis = [0, 1, 0]
+}
+sealOuterProfile = sketch(on = sealPlane) {
+  top = line(start = [var 49mm, var 38mm], end = [var -49mm, var 38mm])
+  topLeft = arc(start = [var -49mm, var 38mm], end = [var -58mm, var 29mm], center = [var -49mm, var 29mm])
+  left = line(start = [var -58mm, var 29mm], end = [var -58mm, var -29mm])
+  bottomLeft = arc(start = [var -58mm, var -29mm], end = [var -49mm, var -38mm], center = [var -49mm, var -29mm])
+  bottom = line(start = [var -49mm, var -38mm], end = [var 49mm, var -38mm])
+  bottomRight = arc(start = [var 49mm, var -38mm], end = [var 58mm, var -29mm], center = [var 49mm, var -29mm])
+  right = line(start = [var 58mm, var -29mm], end = [var 58mm, var 29mm])
+  topRight = arc(start = [var 58mm, var 29mm], end = [var 49mm, var 38mm], center = [var 49mm, var 29mm])
+  coincident([top.end, topLeft.start])
+  coincident([topLeft.end, left.start])
+  coincident([left.end, bottomLeft.start])
+  coincident([bottomLeft.end, bottom.start])
+  coincident([bottom.end, bottomRight.start])
+  coincident([bottomRight.end, right.start])
+  coincident([right.end, topRight.start])
+  coincident([topRight.end, top.start])
+  horizontal(top)
+  vertical(left)
+  horizontal(bottom)
+  vertical(right)
+  vertical([topLeft.center, topLeft.start])
+  horizontal([topLeft.center, topLeft.end])
+  horizontal([bottomLeft.center, bottomLeft.start])
+  vertical([bottomLeft.center, bottomLeft.end])
+  vertical([bottomRight.center, bottomRight.start])
+  horizontal([bottomRight.center, bottomRight.end])
+  horizontal([topRight.center, topRight.start])
+  vertical([topRight.center, topRight.end])
+  horizontal([topLeft.center, topRight.center])
+  horizontal([bottomLeft.center, bottomRight.center])
+  vertical([topLeft.center, bottomLeft.center])
+  vertical([topRight.center, bottomRight.center])
+  radius(topLeft) == sealFlangeOuterRadius
+  radius(bottomLeft) == sealFlangeOuterRadius
+  radius(bottomRight) == sealFlangeOuterRadius
+  radius(topRight) == sealFlangeOuterRadius
+  horizontalDistance([topLeft.center, topRight.center]) == sealFlangeOuterLength - 2 * sealFlangeOuterRadius
+  verticalDistance([bottomRight.center, topRight.center]) == sealFlangeOuterWidth - 2 * sealFlangeOuterRadius
+  horizontalDistance([ORIGIN, topRight.center]) == sealFlangeOuterLength / 2 - sealFlangeOuterRadius
+  verticalDistance([ORIGIN, topRight.center]) == sealFlangeOuterWidth / 2 - sealFlangeOuterRadius
+}
+sealOuterRegion = region(segments = [sealOuterProfile.top, sealOuterProfile.topLeft], intersectionIndex = -1, direction = CCW)
+sealOuterSolid = extrude(sealOuterRegion, length = sealFlangeHeight)
+
+sealInnerProfile = sketch(on = sealPlane) {
+  top = line(start = [var 49mm, var 33mm], end = [var -49mm, var 33mm])
+  topLeft = arc(start = [var -49mm, var 33mm], end = [var -53mm, var 29mm], center = [var -49mm, var 29mm])
+  left = line(start = [var -53mm, var 29mm], end = [var -53mm, var -29mm])
+  bottomLeft = arc(start = [var -53mm, var -29mm], end = [var -49mm, var -33mm], center = [var -49mm, var -29mm])
+  bottom = line(start = [var -49mm, var -33mm], end = [var 49mm, var -33mm])
+  bottomRight = arc(start = [var 49mm, var -33mm], end = [var 53mm, var -29mm], center = [var 49mm, var -29mm])
+  right = line(start = [var 53mm, var -29mm], end = [var 53mm, var 29mm])
+  topRight = arc(start = [var 53mm, var 29mm], end = [var 49mm, var 33mm], center = [var 49mm, var 29mm])
+  coincident([top.end, topLeft.start])
+  coincident([topLeft.end, left.start])
+  coincident([left.end, bottomLeft.start])
+  coincident([bottomLeft.end, bottom.start])
+  coincident([bottom.end, bottomRight.start])
+  coincident([bottomRight.end, right.start])
+  coincident([right.end, topRight.start])
+  coincident([topRight.end, top.start])
+  horizontal(top)
+  vertical(left)
+  horizontal(bottom)
+  vertical(right)
+  vertical([topLeft.center, topLeft.start])
+  horizontal([topLeft.center, topLeft.end])
+  horizontal([bottomLeft.center, bottomLeft.start])
+  vertical([bottomLeft.center, bottomLeft.end])
+  vertical([bottomRight.center, bottomRight.start])
+  horizontal([bottomRight.center, bottomRight.end])
+  horizontal([topRight.center, topRight.start])
+  vertical([topRight.center, topRight.end])
+  horizontal([topLeft.center, topRight.center])
+  horizontal([bottomLeft.center, bottomRight.center])
+  vertical([topLeft.center, bottomLeft.center])
+  vertical([topRight.center, bottomRight.center])
+  radius(topLeft) == sealFlangeInnerRadius
+  radius(bottomLeft) == sealFlangeInnerRadius
+  radius(bottomRight) == sealFlangeInnerRadius
+  radius(topRight) == sealFlangeInnerRadius
+  horizontalDistance([topLeft.center, topRight.center]) == sealFlangeInnerLength - 2 * sealFlangeInnerRadius
+  verticalDistance([bottomRight.center, topRight.center]) == sealFlangeInnerWidth - 2 * sealFlangeInnerRadius
+  horizontalDistance([ORIGIN, topRight.center]) == sealFlangeInnerLength / 2 - sealFlangeInnerRadius
+  verticalDistance([ORIGIN, topRight.center]) == sealFlangeInnerWidth / 2 - sealFlangeInnerRadius
+}
+sealInnerRegion = region(segments = [sealInnerProfile.top, sealInnerProfile.topLeft], intersectionIndex = -1, direction = CCW)
+sealInnerCutter = extrude(sealInnerRegion, length = sealFlangeHeight + csgOverlap)
+sealFlange = subtract([sealOuterSolid], tools = [sealInnerCutter])
+
+groovePlane = {
+  origin = [0mm, 0mm, bodyTopZ - gasketGrooveDepth],
+  xAxis = [1, 0, 0],
+  yAxis = [0, 1, 0]
+}
+grooveOuterProfile = sketch(on = groovePlane) {
+  top = line(start = [var 49mm, var 36.5mm], end = [var -49mm, var 36.5mm])
+  topLeft = arc(start = [var -49mm, var 36.5mm], end = [var -56.5mm, var 29mm], center = [var -49mm, var 29mm])
+  left = line(start = [var -56.5mm, var 29mm], end = [var -56.5mm, var -29mm])
+  bottomLeft = arc(start = [var -56.5mm, var -29mm], end = [var -49mm, var -36.5mm], center = [var -49mm, var -29mm])
+  bottom = line(start = [var -49mm, var -36.5mm], end = [var 49mm, var -36.5mm])
+  bottomRight = arc(start = [var 49mm, var -36.5mm], end = [var 56.5mm, var -29mm], center = [var 49mm, var -29mm])
+  right = line(start = [var 56.5mm, var -29mm], end = [var 56.5mm, var 29mm])
+  topRight = arc(start = [var 56.5mm, var 29mm], end = [var 49mm, var 36.5mm], center = [var 49mm, var 29mm])
+  coincident([top.end, topLeft.start])
+  coincident([topLeft.end, left.start])
+  coincident([left.end, bottomLeft.start])
+  coincident([bottomLeft.end, bottom.start])
+  coincident([bottom.end, bottomRight.start])
+  coincident([bottomRight.end, right.start])
+  coincident([right.end, topRight.start])
+  coincident([topRight.end, top.start])
+  horizontal(top)
+  vertical(left)
+  horizontal(bottom)
+  vertical(right)
+  vertical([topLeft.center, topLeft.start])
+  horizontal([topLeft.center, topLeft.end])
+  horizontal([bottomLeft.center, bottomLeft.start])
+  vertical([bottomLeft.center, bottomLeft.end])
+  vertical([bottomRight.center, bottomRight.start])
+  horizontal([bottomRight.center, bottomRight.end])
+  horizontal([topRight.center, topRight.start])
+  vertical([topRight.center, topRight.end])
+  horizontal([topLeft.center, topRight.center])
+  horizontal([bottomLeft.center, bottomRight.center])
+  vertical([topLeft.center, bottomLeft.center])
+  vertical([topRight.center, bottomRight.center])
+  radius(topLeft) == gasketGrooveOuterRadius
+  radius(bottomLeft) == gasketGrooveOuterRadius
+  radius(bottomRight) == gasketGrooveOuterRadius
+  radius(topRight) == gasketGrooveOuterRadius
+  horizontalDistance([topLeft.center, topRight.center]) == gasketGrooveOuterLength - 2 * gasketGrooveOuterRadius
+  verticalDistance([bottomRight.center, topRight.center]) == gasketGrooveOuterWidth - 2 * gasketGrooveOuterRadius
+  horizontalDistance([ORIGIN, topRight.center]) == gasketGrooveOuterLength / 2 - gasketGrooveOuterRadius
+  verticalDistance([ORIGIN, topRight.center]) == gasketGrooveOuterWidth / 2 - gasketGrooveOuterRadius
+}
+grooveOuterRegion = region(segments = [grooveOuterProfile.top, grooveOuterProfile.topLeft], intersectionIndex = -1, direction = CCW)
+grooveOuterSolid = extrude(grooveOuterRegion, length = gasketGrooveDepth + csgOverlap)
+
+grooveInnerProfile = sketch(on = groovePlane) {
+  top = line(start = [var 49mm, var 34.5mm], end = [var -49mm, var 34.5mm])
+  topLeft = arc(start = [var -49mm, var 34.5mm], end = [var -54.5mm, var 29mm], center = [var -49mm, var 29mm])
+  left = line(start = [var -54.5mm, var 29mm], end = [var -54.5mm, var -29mm])
+  bottomLeft = arc(start = [var -54.5mm, var -29mm], end = [var -49mm, var -34.5mm], center = [var -49mm, var -29mm])
+  bottom = line(start = [var -49mm, var -34.5mm], end = [var 49mm, var -34.5mm])
+  bottomRight = arc(start = [var 49mm, var -34.5mm], end = [var 54.5mm, var -29mm], center = [var 49mm, var -29mm])
+  right = line(start = [var 54.5mm, var -29mm], end = [var 54.5mm, var 29mm])
+  topRight = arc(start = [var 54.5mm, var 29mm], end = [var 49mm, var 34.5mm], center = [var 49mm, var 29mm])
+  coincident([top.end, topLeft.start])
+  coincident([topLeft.end, left.start])
+  coincident([left.end, bottomLeft.start])
+  coincident([bottomLeft.end, bottom.start])
+  coincident([bottom.end, bottomRight.start])
+  coincident([bottomRight.end, right.start])
+  coincident([right.end, topRight.start])
+  coincident([topRight.end, top.start])
+  horizontal(top)
+  vertical(left)
+  horizontal(bottom)
+  vertical(right)
+  vertical([topLeft.center, topLeft.start])
+  horizontal([topLeft.center, topLeft.end])
+  horizontal([bottomLeft.center, bottomLeft.start])
+  vertical([bottomLeft.center, bottomLeft.end])
+  vertical([bottomRight.center, bottomRight.start])
+  horizontal([bottomRight.center, bottomRight.end])
+  horizontal([topRight.center, topRight.start])
+  vertical([topRight.center, topRight.end])
+  horizontal([topLeft.center, topRight.center])
+  horizontal([bottomLeft.center, bottomRight.center])
+  vertical([topLeft.center, bottomLeft.center])
+  vertical([topRight.center, bottomRight.center])
+  radius(topLeft) == gasketGrooveInnerRadius
+  radius(bottomLeft) == gasketGrooveInnerRadius
+  radius(bottomRight) == gasketGrooveInnerRadius
+  radius(topRight) == gasketGrooveInnerRadius
+  horizontalDistance([topLeft.center, topRight.center]) == gasketGrooveInnerLength - 2 * gasketGrooveInnerRadius
+  verticalDistance([bottomRight.center, topRight.center]) == gasketGrooveInnerWidth - 2 * gasketGrooveInnerRadius
+  horizontalDistance([ORIGIN, topRight.center]) == gasketGrooveInnerLength / 2 - gasketGrooveInnerRadius
+  verticalDistance([ORIGIN, topRight.center]) == gasketGrooveInnerWidth / 2 - gasketGrooveInnerRadius
+}
+grooveInnerRegion = region(segments = [grooveInnerProfile.top, grooveInnerProfile.topLeft], intersectionIndex = -1, direction = CCW)
+grooveInnerCutter = extrude(grooveInnerRegion, length = gasketGrooveDepth + 2 * csgOverlap)
+gasketGrooveCutter = subtract([grooveOuterSolid], tools = [grooveInnerCutter])
+
+bossBottomZ = bodyBottomZ + floorThickness - 0.4mm
+bossTopZ = bodyTopZ - 1.8mm
+bossHeight = bossTopZ - bossBottomZ
+bossCenterZ = (bossTopZ + bossBottomZ) / 2
+bossFootHeight = 2.8mm
+bossFootCenterZ = bodyBottomZ + floorThickness + 0.4mm
+
+bossBase = clone(unitCylinder)
+  |> scale(x = screwBossDiameter / 1mm, y = screwBossDiameter / 1mm, z = bossHeight / 1mm, global = true)
+  |> translate(x = -screwCenterX, y = -screwCenterY, z = bossCenterZ, global = true)
+bossFrontRight = clone(bossBase)
+  |> translate(x = 2 * screwCenterX, global = true)
+bossBackLeft = clone(bossBase)
+  |> translate(y = 2 * screwCenterY, global = true)
+bossBackRight = clone(bossFrontRight)
+  |> translate(y = 2 * screwCenterY, global = true)
+
+bossFootBase = clone(unitCylinder)
+  |> scale(x = screwBossFootDiameter / 1mm, y = screwBossFootDiameter / 1mm, z = bossFootHeight / 1mm, global = true)
+  |> translate(x = -screwCenterX, y = -screwCenterY, z = bossFootCenterZ, global = true)
+bossFootFrontRight = clone(bossFootBase)
+  |> translate(x = 2 * screwCenterX, global = true)
+bossFootBackLeft = clone(bossFootBase)
+  |> translate(y = 2 * screwCenterY, global = true)
+bossFootBackRight = clone(bossFootFrontRight)
+  |> translate(y = 2 * screwCenterY, global = true)
+
+trayPostHeight = 5.8mm
+trayPostCenterZ = bodyBottomZ + floorThickness + trayPostHeight / 2 - 0.3mm
+trayPostBase = clone(unitCylinder)
+  |> scale(x = trayMountPostDiameter / 1mm, y = trayMountPostDiameter / 1mm, z = trayPostHeight / 1mm, global = true)
+  |> translate(x = -trayMountX, y = trayCenterY - trayMountY, z = trayPostCenterZ, global = true)
+trayPostFrontRight = clone(trayPostBase)
+  |> translate(x = 2 * trayMountX, global = true)
+trayPostBackLeft = clone(trayPostBase)
+  |> translate(y = 2 * trayMountY, global = true)
+trayPostBackRight = clone(trayPostFrontRight)
+  |> translate(y = 2 * trayMountY, global = true)
+
+batteryPostBase = clone(unitCylinder)
+  |> scale(x = 7mm / 1mm, y = 7mm / 1mm, z = 2.8mm / 1mm, global = true)
+  |> translate(x = -batteryMountX, y = batteryCenterY, z = bodyBottomZ + floorThickness + 1.1mm, global = true)
+batteryPostRight = clone(batteryPostBase)
+  |> translate(x = 2 * batteryMountX, global = true)
+
+leftFrontStiffener = clone(unitBox)
+  |> scale(x = 18mm / 1mm, y = 4mm / 1mm, z = 7mm / 1mm, global = true)
+  |> translate(x = -28mm, y = -35.5mm, z = bodyBottomZ + floorThickness + 2.5mm, global = true)
+rightFrontStiffener = clone(leftFrontStiffener)
+  |> translate(x = 56mm, global = true)
+leftRearStiffener = clone(leftFrontStiffener)
+  |> translate(y = 71mm, global = true)
+rightRearStiffener = clone(rightFrontStiffener)
+  |> translate(y = 71mm, global = true)
+
+cableRailLower = clone(unitBox)
+  |> scale(x = 22mm / 1mm, y = 2mm / 1mm, z = 3.2mm / 1mm, global = true)
+  |> translate(x = 43mm, y = -8mm, z = bodyBottomZ + floorThickness + 1.3mm, global = true)
+cableRailUpper = clone(cableRailLower)
+  |> translate(y = 5mm, global = true)
+
+smaMountPad = clone(unitBox)
+  |> scale(x = 5.5mm / 1mm, y = 20mm / 1mm, z = 20mm / 1mm, global = true)
+  |> translate(x = outerLength / 2 + 0.25mm, y = smaPortY, z = smaPortZ, global = true)
+smaGuardLower = clone(unitBox)
+  |> scale(x = 14mm / 1mm, y = 5mm / 1mm, z = 26mm / 1mm, global = true)
+  |> translate(x = outerLength / 2 + 4mm, y = -smaGuardOffsetY, z = smaPortZ, global = true)
+smaGuardUpper = clone(smaGuardLower)
+  |> translate(y = 2 * smaGuardOffsetY, global = true)
+
+bodyShell = subtract([outerBody], tools = [cavityCutter])
+
+insertPocketBase = clone(unitCylinder)
+  |> scale(x = screwInsertPocketDiameter / 1mm, y = screwInsertPocketDiameter / 1mm, z = 9mm / 1mm, global = true)
+  |> translate(x = -screwCenterX, y = -screwCenterY, z = 12mm, global = true)
+insertPocketFrontRight = clone(insertPocketBase)
+  |> translate(x = 2 * screwCenterX, global = true)
+insertPocketBackLeft = clone(insertPocketBase)
+  |> translate(y = 2 * screwCenterY, global = true)
+insertPocketBackRight = clone(insertPocketFrontRight)
+  |> translate(y = 2 * screwCenterY, global = true)
+
+trayPilotBase = clone(unitCylinder)
+  |> scale(x = 2.8mm / 1mm, y = 2.8mm / 1mm, z = 6.5mm / 1mm, global = true)
+  |> translate(x = -trayMountX, y = trayCenterY - trayMountY, z = bodyBottomZ + floorThickness + 3mm, global = true)
+trayPilotFrontRight = clone(trayPilotBase)
+  |> translate(x = 2 * trayMountX, global = true)
+trayPilotBackLeft = clone(trayPilotBase)
+  |> translate(y = 2 * trayMountY, global = true)
+trayPilotBackRight = clone(trayPilotFrontRight)
+  |> translate(y = 2 * trayMountY, global = true)
+
+batteryPilotBase = clone(unitCylinder)
+  |> scale(x = 3.2mm / 1mm, y = 3.2mm / 1mm, z = 4.5mm / 1mm, global = true)
+  |> translate(x = -batteryMountX, y = batteryCenterY, z = bodyBottomZ + floorThickness + 1.9mm, global = true)
+batteryPilotRight = clone(batteryPilotBase)
+  |> translate(x = 2 * batteryMountX, global = true)
+
+smaPortCutter = clone(unitCylinder)
+  |> scale(x = smaPanelHoleDiameter / 1mm, y = smaPanelHoleDiameter / 1mm, z = 14mm / 1mm, global = true)
+  |> rotate(axis = Y, angle = 90deg, global = true)
+  |> translate(x = outerLength / 2, y = smaPortY, z = smaPortZ, global = true)
+smaPadPortCutter = clone(smaPortCutter)
+
+bodyShellCut = subtract([bodyShell], tools = [smaPortCutter])
+sealFlangeCut = subtract([sealFlange], tools = [gasketGrooveCutter])
+bossBaseCut = subtract([bossBase], tools = [insertPocketBase])
+bossFrontRightCut = subtract([bossFrontRight], tools = [insertPocketFrontRight])
+bossBackLeftCut = subtract([bossBackLeft], tools = [insertPocketBackLeft])
+bossBackRightCut = subtract([bossBackRight], tools = [insertPocketBackRight])
+trayPostBaseCut = subtract([trayPostBase], tools = [trayPilotBase])
+trayPostFrontRightCut = subtract([trayPostFrontRight], tools = [trayPilotFrontRight])
+trayPostBackLeftCut = subtract([trayPostBackLeft], tools = [trayPilotBackLeft])
+trayPostBackRightCut = subtract([trayPostBackRight], tools = [trayPilotBackRight])
+batteryPostBaseCut = subtract([batteryPostBase], tools = [batteryPilotBase])
+batteryPostRightCut = subtract([batteryPostRight], tools = [batteryPilotRight])
+smaPadCut = subtract([smaMountPad], tools = [smaPadPortCutter])
+lowerBodies = flatten([
+  bodyShellCut,
+  sealFlangeCut,
+  bossBaseCut,
+  bossFrontRightCut,
+  bossBackLeftCut,
+  bossBackRightCut,
+  bossFootBase,
+  bossFootFrontRight,
+  bossFootBackLeft,
+  bossFootBackRight,
+  trayPostBaseCut,
+  trayPostFrontRightCut,
+  trayPostBackLeftCut,
+  trayPostBackRightCut,
+  batteryPostBaseCut,
+  batteryPostRightCut,
+  leftFrontStiffener,
+  rightFrontStiffener,
+  leftRearStiffener,
+  rightRearStiffener,
+  cableRailLower,
+  cableRailUpper,
+  smaPadCut,
+  smaGuardLower,
+  smaGuardUpper
+])
+
+constructionHidden = hide([
+  outerProfile,
+  cavityProfile,
+  sealOuterProfile,
+  sealInnerProfile,
+  grooveOuterProfile,
+  grooveInnerProfile
+])
+
+export lowerEnclosure = appearance(lowerBodies, color = enclosureColor, metalness = 12, roughness = 58)

@@ -1,0 +1,60 @@
+// SurakshaMesh battery retainer
+// Removable open-top cell cradle with padded clearance, end stops, and strap slots.
+@settings(defaultLengthUnit = mm, kclVersion = 2.0)
+
+import unitBox from "unit_box.kcl"
+import unitCylinder from "unit_cylinder.kcl"
+import * from "parameters.kcl"
+
+retainerBase = clone(unitBox)
+  |> scale(x = batteryRetainerLength / 1mm, y = batteryRetainerWidth / 1mm, z = 3mm / 1mm, global = true)
+
+leftSaddleBlank = clone(unitBox)
+  |> scale(x = 8mm / 1mm, y = 21mm / 1mm, z = 12mm / 1mm, global = true)
+  |> translate(x = -25mm, z = 7mm, global = true)
+rightSaddleBlank = clone(leftSaddleBlank)
+  |> translate(x = 50mm, global = true)
+
+batteryCradleCutter = clone(unitCylinder)
+  |> scale(x = batteryClearanceDiameter / 1mm, y = batteryClearanceDiameter / 1mm, z = 90mm / 1mm, global = true)
+  |> rotate(axis = Y, angle = 90deg, global = true)
+  |> translate(z = batteryCenterLocalZ, global = true)
+saddles = subtract([leftSaddleBlank, rightSaddleBlank], tools = [batteryCradleCutter])
+
+lowerSideRail = clone(unitBox)
+  |> scale(x = 68mm / 1mm, y = 3mm / 1mm, z = 6mm / 1mm, global = true)
+  |> translate(y = -9.5mm, z = 3.5mm, global = true)
+upperSideRail = clone(lowerSideRail)
+  |> translate(y = 19mm, global = true)
+leftEndStop = clone(unitBox)
+  |> scale(x = 3mm / 1mm, y = 22mm / 1mm, z = 10mm / 1mm, global = true)
+  |> translate(x = -37.5mm, z = 5.3mm, global = true)
+rightEndStop = clone(leftEndStop)
+  |> translate(x = 75mm, global = true)
+
+leftStrapSlot = clone(unitBox)
+  |> scale(x = 4mm / 1mm, y = 15mm / 1mm, z = 5mm / 1mm, global = true)
+  |> translate(x = -15mm, global = true)
+rightStrapSlot = clone(leftStrapSlot)
+  |> translate(x = 30mm, global = true)
+
+leftMountHole = clone(unitCylinder)
+  |> scale(x = 3.3mm / 1mm, y = 3.3mm / 1mm, z = 5mm / 1mm, global = true)
+  |> translate(x = -batteryMountX, global = true)
+rightMountHole = clone(leftMountHole)
+  |> translate(x = 2 * batteryMountX, global = true)
+
+baseCut1 = subtract([retainerBase], tools = [leftStrapSlot])
+baseCut2 = subtract([baseCut1], tools = [rightStrapSlot])
+baseCut3 = subtract([baseCut2], tools = [leftMountHole])
+baseCut = subtract([baseCut3], tools = [rightMountHole])
+retainerBodies = flatten([
+  baseCut,
+  saddles,
+  lowerSideRail,
+  upperSideRail,
+  leftEndStop,
+  rightEndStop
+])
+
+export batteryRetainer = appearance(retainerBodies, color = retainerColor, metalness = 8, roughness = 60)

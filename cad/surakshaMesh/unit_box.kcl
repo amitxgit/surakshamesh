@@ -1,0 +1,29 @@
+// Unit box primitive
+// Origin-centered solver-sketch cube for prismatic features and cutters.
+@settings(defaultLengthUnit = mm, kclVersion = 2.0)
+
+unitBoxSketch = sketch(on = XY) {
+  centerPoint = point(at = [var 0mm, var 0mm])
+  lowerEdge = line(start = [var -0.5mm, var -0.5mm], end = [var 0.5mm, var -0.5mm])
+  rightEdge = line(start = [var 0.5mm, var -0.5mm], end = [var 0.5mm, var 0.5mm])
+  upperEdge = line(start = [var 0.5mm, var 0.5mm], end = [var -0.5mm, var 0.5mm])
+  leftEdge = line(start = [var -0.5mm, var 0.5mm], end = [var -0.5mm, var -0.5mm])
+  coincident([lowerEdge.end, rightEdge.start])
+  coincident([rightEdge.end, upperEdge.start])
+  coincident([upperEdge.end, leftEdge.start])
+  coincident([leftEdge.end, lowerEdge.start])
+  coincident([centerPoint, ORIGIN])
+  horizontal(lowerEdge)
+  vertical(rightEdge)
+  horizontal(upperEdge)
+  vertical(leftEdge)
+  horizontalDistance([centerPoint, lowerEdge.start]) == -0.5mm
+  verticalDistance([centerPoint, lowerEdge.start]) == -0.5mm
+  horizontalDistance([centerPoint, rightEdge.end]) == 0.5mm
+  verticalDistance([centerPoint, rightEdge.end]) == 0.5mm
+}
+unitBoxRegion = region(segments = [unitBoxSketch.lowerEdge, unitBoxSketch.rightEdge], intersectionIndex = -1, direction = CCW)
+unitBoxBody = extrude(unitBoxRegion, length = 1mm, symmetric = true)
+unitBoxSketchHidden = hide(unitBoxSketch)
+
+export unitBox = unitBoxBody
