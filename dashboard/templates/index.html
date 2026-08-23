@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>SurakshaMesh — panel map</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root {
+      --bg: #121212;
+      --ink: #f4f1ea;
+      --muted: #b9b3a6;
+      --green: #2e7d32;
+      --yellow: #f5c400;
+      --red: #c0392b;
+      --card: #1c1c1c;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font-family: "Segoe UI", system-ui, sans-serif;
+      background: var(--bg); color: var(--ink);
+    }
+    header {
+      display: flex; justify-content: space-between; align-items: baseline;
+      padding: 16px 24px 8px; border-bottom: 2px solid #f5c400;
+    }
+    h1 { font-size: 22px; margin: 0; letter-spacing: 0.04em; }
+    h1 span { color: var(--yellow); }
+    .sub { color: var(--muted); font-size: 13px; }
+    #toast {
+      position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
+      background: var(--red); color: #fff; padding: 10px 18px; border-radius: 4px;
+      display: none; font-weight: 700; z-index: 9;
+    }
+    main { padding: 20px 24px; }
+    #grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 16px; max-width: 900px;
+    }
+    .cell {
+      background: var(--card); border: 3px solid #333; min-height: 180px;
+      padding: 16px; border-radius: 6px;
+    }
+    .cell.r0 { border-color: var(--green); background: #16351a; }
+    .cell.r1 { border-color: var(--yellow); background: #3a3008; }
+    .cell.r2, .cell.r3 { border-color: var(--red); background: #3a1210; }
+    .cell h2 { margin: 0 0 8px; font-size: 18px; }
+    .word { font-size: 28px; font-weight: 800; margin: 8px 0; }
+    .nums { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 14px; line-height: 1.5; }
+    .stale { opacity: 0.45; }
+    menu { margin: 18px 0 0; padding: 0; display: flex; gap: 8px; flex-wrap: wrap; }
+    button {
+      background: #2a2a2a; color: var(--ink); border: 1px solid #555;
+      padding: 8px 12px; cursor: pointer; font-size: 13px;
+    }
+    button:hover { border-color: var(--yellow); }
+    #msg { margin-top: 10px; color: var(--muted); font-size: 13px; min-height: 1.2em; }
+  </style>
+</head>
+<body>
+  <div id="toast">SMS would be sent to mine office — Critical</div>
+  <header>
+    <div>
+      <h1>SurakshaMesh <span>panel map</span></h1>
+      <div class="sub">SIH26025 · Coal India · offline first-alert · not a DGPS replacement</div>
+    </div>
+    <div class="sub" id="clock"></div>
+  </header>
+  <main>
+    <div id="grid"></div>
+    <menu>
+      <button id="base-start">Learn baseline (flat 20 s)</button>
+      <button id="base-stop">Fit Isolation Forest</button>
+      <button id="tilt2">Demo: lift N2</button>
+      <button id="flat2">Demo: flatten N2</button>
+    </menu>
+    <div id="msg"></div>
+  </main>
+  <script>
+    const WORDS = ["CLEAR", "WATCH", "WARNING", "CRITICAL"];
+    let audioCtx;
+    function beep() {
+      try {
+        audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+        const o = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        o.frequency.value = 880;
+        o.connect(g); g.connect(audioCtx.destination);
+        g.gain.setValueAtTime(0.15, audioCtx.currentTime);
+        o.start(); o.stop(audioCtx.currentTime + 0.35);
+      } catch (e) {}
+    }
+    function toast() {
+      const t = document.getElementById("toast");
+      t.style.display = "block";
+      setTimeout(() => t.style.display = "none", 2500);
+    }
+    const lastRisk = {};
+    async function tick() {
+      const r = await fetch("/api/nodes");
+      const j = await r.json();
+      const grid = document.getElementById("grid");
+      const now = Date.now() / 1000;
+      if (!j.nodes.length) {
+        grid.innerHTML = "<p class='sub'>Waiting for JSON from the hub node…</p>";
+        return;
+      }
+      j.nodes.sort((a,b) => a.id - b.id);
+      grid.innerHTML = j.nodes.map(n => {
+        const stale = (now - n.ts) > 5 ? " stale" : "";
+        return `<article class="cell r${n.risk}${stale}">
+          <h2>N${n.id}</h2>
+          <div class="word">${WORDS[n.risk] || "?"}</div>
+          <div class="nums">pitch ${n.pitch.toFixed(2)}° &nbsp; roll ${n.roll.toFixed(2)}°<br>
+          vib ${n.vib.toFixed(3)} g RMS${n.ai ? " · AI anomaly" : ""}</div>
+        </article>`;
+      }).join("");
+      for (const n of j.nodes) {
+        if (n.risk >= 2 && (lastRisk[n.id] || 0) < 2) { beep(); toast(); }
+        lastRisk[n.id] = n.risk;
+      }
+      document.getElementById("clock").textContent =
+        (j.fitted ? "IF fitted · " : "") + new Date().toLocaleTimeString();
+    }
+    setInterval(tick, 400);
+    tick();
+    document.body.addEventListener("click", () => { audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); }, { once: true });
+    async function post(url, body) {
+      const r = await fetch(url, { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(body || {}) });
+      const j = await r.json();
+      document.getElementById("msg").textContent = j.msg || "ok";
+    }
+    document.getElementById("base-start").onclick = () => post("/api/baseline", {action:"start"});
+    document.getElementById("base-stop").onclick = () => post("/api/baseline", {action:"stop"});
+    document.getElementById("tilt2").onclick = () => post("/api/tilt/2");
+    document.getElementById("flat2").onclick = () => post("/api/flat/2");
+  </script>
+</body>
+</html>

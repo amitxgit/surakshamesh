@@ -1,0 +1,38 @@
+SURAKSHAMESH — 60s VO
+Indian English. Calm. ~140 wpm. Do not ad-lib product claims.
+
+[0:00–0:07]
+Underground coal mining leaves a void. On the surface, the ground can sag — quietly.
+
+[0:07–0:14]
+Coal India still finds this with periodic surveys and cracked houses. That is too late.
+
+[0:14–0:22]
+SurakshaMesh is a low-cost wireless surface mesh. Small stations sit above the panel, always on.
+
+[0:22–0:30]
+Each node feels tilt and vibration. The box still talks if the laptop dies.
+
+[0:30–0:38]
+They report to a gateway. A live map. Offline first.
+
+[0:38–0:46]
+When the ground starts to sag, that station sees it — Watch, then Warning.
+
+[0:46–0:53]
+The control room gets Watch, Warning, or Critical — even if the wide-area network is down, the log stays.
+
+[0:53–1:00]
+Not a replacement for survey-grade GPS. The early-warning fabric Coal India asked for. SurakshaMesh.
+
+---
+WORD COUNT: ~118. Leave air for SFX on the red LED.
+If we have no VO talent, ship captions-only from ANIMATOR-BRIEF.md shot table.
+
+BANNED IN THE BOOTH
+- millimetre / millimetre-accurate
+- drone / satellite / InSAR
+- Jharia data / trained on mine data
+- replaces DGPS
+- artificial intelligence as the hero (anomaly detection is fine in a slide, not in this VO)
+- college / DU / FoT
