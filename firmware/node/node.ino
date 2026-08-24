@@ -42,19 +42,10 @@
 #define PIN_BUZZER       14
 #define PIN_ONBOARD      2
 
-// Sampling and Thresholds
+// Sampling and Filter Constants
 #define SAMPLE_HZ        50
 #define SEND_MS          1000
 #define VIB_WINDOW       50
-
-#define WATCH_DEG        2.0f
-#define WARN_DEG         5.0f
-#define CRIT_DEG         8.0f
-#define VIB_G            0.20f
-#define WATCH_HOLD_MS    5000
-#define GREEN_HOLD_MS    2000
-#define GREEN_BACK_DEG   1.5f
-
 #define ALPHA            0.98f      // Complementary filter weighting
 
 #if USE_WIFI_HTTP
@@ -75,6 +66,7 @@ static float pitch_raw = 0, roll_raw = 0;
 static float pitch_zero = 0, roll_zero = 0; // Auto-tared resting position
 static float delta_pitch = 0, delta_roll = 0;
 static bool  tared = false;
+static uint32_t tilt_started_at = 0;
 
 static float vib_rms = 0;
 static float vib_buf[VIB_WINDOW];
@@ -83,8 +75,6 @@ static int   vib_n = 0;
 static uint8_t risk = 0;
 static uint8_t max_mesh_risk = 0;   // Highest risk heard on mesh
 static uint32_t last_mesh_alert = 0;
-static uint32_t watch_since = 0;
-static uint32_t green_since = 0;
 static uint32_t last_send = 0;
 static uint32_t last_sample = 0;
 static uint8_t broadcast_mac[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
@@ -107,7 +97,7 @@ static void update_feedback(uint8_t r) {
   uint8_t effective_risk = r;
 
 #if IS_GATEWAY
-  // On Gateway, alert if own sensor OR any mesh node triggers alarm
+  // On Gateway, sound buzzer only if own sensor OR incoming mesh packets show warning/critical
   if (millis() - last_mesh_alert < 3000 && max_mesh_risk > effective_risk) {
     effective_risk = max_mesh_risk;
   } else if (millis() - last_mesh_alert >= 3000) {
@@ -122,14 +112,14 @@ static void update_feedback(uint8_t r) {
 #if USE_BUZZER
   uint32_t now_ms = millis();
   if (effective_risk <= 1) {
-    // Completely SILENT during Normal (0) and Watch (1)
+    // Completely SILENT during Normal (0) and transient Watch (1)
     digitalWrite(PIN_BUZZER, LOW);
   } else if (effective_risk == 2) {
-    // Pulsing warning beep on >5° tilt (200ms ON / 200ms OFF)
+    // Pulsing warning beep on persistent >5° tilt (200ms ON / 200ms OFF)
     bool beep = (now_ms % 400) < 200;
     digitalWrite(PIN_BUZZER, beep ? HIGH : LOW);
   } else if (effective_risk == 3) {
-    // Rapid emergency alarm on >8° critical tilt (80ms ON / 80ms OFF)
+    // Rapid emergency alarm on >8° severe tilt / collapse (80ms ON / 80ms OFF)
     bool alert = (now_ms % 160) < 80;
     digitalWrite(PIN_BUZZER, alert ? HIGH : LOW);
   }
@@ -174,29 +164,31 @@ static bool mpu_read(float *ax, float *ay, float *az, float *gx, float *gy, floa
   return true;
 }
 
-static uint8_t classify(float p, float r, float v, uint32_t now) {
-  float a = fabsf(p) > fabsf(r) ? fabsf(p) : fabsf(r);
-  uint8_t next;
-  if (a >= CRIT_DEG)                     next = 3;
-  else if (a >= WARN_DEG)                next = 2;
-  else if (a >= WATCH_DEG || v >= VIB_G) next = 1;
-  else                                   next = 0;
+// Exactly matches website's decision engine thresholds and persistence
+static uint8_t classify(float dp, float dr, float v, uint32_t now) {
+  if (!tared) return 0; // Silent while auto-taring
 
-  if (next >= 1) {
-    if (watch_since == 0) watch_since = now;
-    if (next == 1 && (now - watch_since) >= WATCH_HOLD_MS && v >= VIB_G)
-      next = 3;
-    green_since = 0;
-  } else {
-    watch_since = 0;
-    if (a > GREEN_BACK_DEG) {
-      next = risk >= 1 ? risk : 0;
-    } else {
-      if (green_since == 0) green_since = now;
-      if ((now - green_since) < GREEN_HOLD_MS) next = risk;
-    }
+  float delta_tilt = fabsf(dp) > fabsf(dr) ? fabsf(dp) : fabsf(dr);
+
+  // Track persistent deformation (filters out accidental 1-second bumps)
+  if (delta_tilt >= 2.0f) {
+    if (tilt_started_at == 0) tilt_started_at = now;
+  } else if (delta_tilt < 1.5f) {
+    tilt_started_at = 0; // Hysteresis recovery
   }
-  return next;
+
+  bool is_persistent = (tilt_started_at != 0) && ((now - tilt_started_at) >= 3000);
+
+  if (delta_tilt >= 8.0f) {
+    return 3; // Critical immediately on severe >8° tilt
+  }
+  if (delta_tilt >= 5.0f && is_persistent) {
+    return 2; // Warning ONLY if >5° tilt is held steady for 3 seconds
+  }
+  if (delta_tilt >= 2.0f || v >= 0.25f) {
+    return 1; // Watch on minor movements (Buzzer stays SILENT)
+  }
+  return 0;   // Normal (Buzzer stays SILENT)
 }
 
 static void emit_json(const packet_t *p) {
@@ -341,7 +333,7 @@ void loop() {
   roll_raw = -roll_raw;
 #endif
 
-  // Auto-tare baseline zero offset during initial 1.5 seconds
+  // Auto-tare baseline zero offset during initial 1.5 seconds after power-on
   static uint32_t tare_samples = 0;
   static float sum_p = 0, sum_r = 0;
   if (!tared) {
