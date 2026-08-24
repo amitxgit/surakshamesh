@@ -28,14 +28,36 @@ export default function Dashboard() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [audioEnabled, setAudioEnabled] = useState(true);
+  const [trendHistory, setTrendHistory] = useState<Record<string, { tilt: number; vib: number }[]>>({});
+  
   const audioContextRef = useRef<AudioContext | null>(null);
   const lastBeepRef = useRef<number>(0);
 
   const refresh = async () => {
     try {
-      const next = await fetch("/api/status", { cache: "no-store" }).then(res => res.json());
+      const next: Status = await fetch("/api/status", { cache: "no-store" }).then(res => res.json());
       setStatus(next);
       setSelectedId(curr => curr ?? next.nodes[0]?.nodeId ?? next.nodes[0]?.id ?? null);
+
+      // Record real-time rolling trend history for all nodes
+      if (next && next.nodes) {
+        setTrendHistory(prev => {
+          const updated = { ...prev };
+          next.nodes.forEach(n => {
+            const id = n.nodeId || n.id;
+            if (!id) return;
+            const currentList = updated[id] ? [...updated[id]] : [];
+            const dP = n.deltaPitch ?? n.pitch ?? 0;
+            const dR = n.deltaRoll ?? n.roll ?? 0;
+            const tilt = Math.max(Math.abs(dP), Math.abs(dR));
+            const vib = n.vibration ?? 0;
+            currentList.push({ tilt, vib });
+            if (currentList.length > 25) currentList.shift();
+            updated[id] = currentList;
+          });
+          return updated;
+        });
+      }
     } catch {
       // Ignore transient network errors
     }
@@ -92,31 +114,38 @@ export default function Dashboard() {
   const resetAll = async () => {
     setBusy(true);
     await fetch("/api/reset", { method: "POST" });
+    setTrendHistory({});
     await refresh();
     setBusy(false);
   };
 
   const exportCSV = () => {
     if (!status) return;
-    const headers = "Timestamp,NodeID,Role,DeltaPitch_deg,DeltaRoll_deg,Vibration_g,RiskLevel,Status\n";
+    const headers = "Timestamp,NodeID,Role,Status,Pitch,Roll,DeltaPitch,DeltaRoll,DeltaTilt,VibrationRMS,RiskLevel\n";
+    const nowISO = new Date().toISOString();
     const rows = status.nodes.map(n => {
       const dP = n.deltaPitch ?? n.pitch;
       const dR = n.deltaRoll ?? n.roll;
-      return `"${new Date().toISOString()}","${n.nodeId || n.id}","${n.role}",${dP.toFixed(2)},${dR.toFixed(2)},${n.vibration.toFixed(4)},${n.level},"${n.online ? "ONLINE" : "OFFLINE"}"`;
+      const dTilt = Math.max(Math.abs(dP), Math.abs(dR));
+      return `${nowISO},${n.nodeId || n.id},${n.role},${n.online ? "ONLINE" : "OFFLINE"},${n.pitch},${n.roll},${dP.toFixed(2)},${dR.toFixed(2)},${dTilt.toFixed(2)},${n.vibration.toFixed(4)},${n.level}`;
     }).join("\n");
+
     const blob = new Blob([headers + rows], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `SurakshaMesh_Audit_${Date.now()}.csv`;
+    a.download = `SurakshaMesh_Telemetry_${Date.now()}.csv`;
     a.click();
+    URL.revokeObjectURL(url);
   };
 
   const level = status?.overallLevel ?? 0;
   const selected = useMemo(() => {
+    if (!status) return null;
     return (
-      status?.nodes.find(n => (n.nodeId || n.id) === selectedId) ??
-      status?.nodes[0]
+      status.nodes.find(n => (n.nodeId || n.id) === selectedId) ||
+      status.nodes[0] ||
+      null
     );
   }, [status, selectedId]);
 
@@ -124,6 +153,29 @@ export default function Dashboard() {
   const onlineCount = status?.nodes.filter(n => n.online).length ?? 0;
   const isBlastActive = status?.blastSuppression?.active ?? false;
   const blastRemaining = status?.blastSuppression?.remainingSeconds ?? 0;
+
+  // Compute live SVG trend points for selected node
+  const activeHistory = (selectedId && trendHistory[selectedId]) ? trendHistory[selectedId] : [];
+  const hasHistory = activeHistory.length >= 2;
+
+  const tiltPolyline = hasHistory
+    ? activeHistory.map((pt, i) => {
+        const x = (i / (activeHistory.length - 1)) * 240;
+        const y = 60 - Math.min(52, (pt.tilt / 8.0) * 52);
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+      }).join(" ")
+    : "0,60 240,60";
+
+  const vibPolyline = hasHistory
+    ? activeHistory.map((pt, i) => {
+        const x = (i / (activeHistory.length - 1)) * 240;
+        const y = 60 - Math.min(48, (pt.vib / 0.25) * 48);
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+      }).join(" ")
+    : "0,60 240,60";
+
+  const latestTilt = activeHistory.length > 0 ? activeHistory[activeHistory.length - 1].tilt : (selected?.deltaTilt ?? 0);
+  const latestVib = activeHistory.length > 0 ? activeHistory[activeHistory.length - 1].vib : (selected?.vibration ?? 0);
 
   return (
     <main className={`level-${level}`}>
@@ -257,8 +309,8 @@ export default function Dashboard() {
               <strong>{status?.baseline.samples ?? 0}</strong>
               <span>/ 60 SAMPLES</span>
             </div>
-            <div className="meter">
-              <i style={{ strokeDashoffset: 126 - samplePercent * 1.26 }} />
+            <div className="progress" style={{ width: "100%", height: "6px", background: "var(--color-border)", borderRadius: "3px", overflow: "hidden", margin: "8px 0" }}>
+              <i style={{ display: "block", height: "100%", width: `${samplePercent}%`, background: "var(--color-normal)", transition: "width 0.3s" }} />
             </div>
             <p>Deviation is calculated relative to your tared ground zero.</p>
           </div>
@@ -271,45 +323,25 @@ export default function Dashboard() {
               <h2>Surface Sensor Mesh</h2>
               <small>{onlineCount} ACTIVE NODES · REAL HARDWARE TELEMETRY</small>
             </div>
-            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+            <div style={{ display: "flex", gap: "8px" }}>
               <button 
                 disabled={busy} 
-                onClick={toggleBlast} 
-                title="Mute false vibration alarms during planned mine detonation"
+                onClick={toggleBlast}
                 style={{ 
-                  background: isBlastActive ? "#F59E0B" : "rgba(245, 158, 11, 0.12)", 
-                  borderColor: "#F59E0B", 
-                  color: isBlastActive ? "#000" : "#FBBF24",
-                  fontWeight: 600
+                  borderColor: isBlastActive ? "#F59E0B" : "var(--color-border-mid)", 
+                  color: isBlastActive ? "#F59E0B" : "var(--color-text-primary)",
+                  background: isBlastActive ? "rgba(245, 158, 11, 0.15)" : undefined
                 }}
               >
-                {isBlastActive ? `💥 Blast Active (${blastRemaining}s)` : "💥 Blast Mode (60s)"}
+                💥 {isBlastActive ? `Blast Mode (${blastRemaining}s)` : "Blast Mode (60s)"}
               </button>
-
-              <button 
-                disabled={busy} 
-                onClick={calibrate} 
-                title="Tare/Zero initial tilt offset for all nodes"
-                style={{ 
-                  background: "rgba(59, 130, 246, 0.12)", 
-                  borderColor: "#3B82F6", 
-                  color: "#60A5FA",
-                  fontWeight: 600
-                }}
-              >
+              <button disabled={busy} onClick={calibrate} style={{ borderColor: "#3B82F6", color: "#60A5FA" }}>
                 🎯 Zero Baseline
               </button>
-
               <button 
                 disabled={busy} 
-                onClick={resetAll} 
-                title="Master reset: clears all alarms and event logs"
-                style={{ 
-                  background: "rgba(239, 68, 68, 0.12)", 
-                  borderColor: "#EF4444", 
-                  color: "#F87171",
-                  fontWeight: 600
-                }}
+                onClick={resetAll}
+                style={{ borderColor: "#EF4444", color: "#F87171" }}
               >
                 🔄 Reset System
               </button>
@@ -331,7 +363,7 @@ export default function Dashboard() {
                 background: "transparent",
                 border: "1px solid var(--color-border)",
                 borderRadius: "4px",
-                color: "var(--color-accent-light)",
+                color: "#60A5FA",
                 fontSize: "10px",
                 padding: "2px 6px",
                 cursor: "pointer"
@@ -350,13 +382,53 @@ export default function Dashboard() {
             ))}
           </div>
           <div className="trend">
-            <p className="panel-label">NODE TREND — {selected?.nodeId || selected?.id || "--"}</p>
-            <div className="sparkline">
-              <svg viewBox="0 0 240 74" aria-label="Selected node trend">
-                <polyline points="0,52 22,48 44,51 66,38 88,46 110,36 132,41 154,25 176,33 198,19 220,28 240,14" />
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+              <p className="panel-label" style={{ margin: 0 }}>NODE TREND — {selected?.nodeId || selected?.id || "--"}</p>
+              <span style={{ fontSize: "10px", fontFamily: "JetBrains Mono", color: "#38BDF8" }}>
+                ΔTilt: {latestTilt.toFixed(1)}° · Vib: {latestVib.toFixed(3)}g
+              </span>
+            </div>
+            <div className="sparkline" style={{ background: "rgba(3, 7, 18, 0.6)", borderRadius: "6px", padding: "4px", border: "1px solid rgba(255,255,255,0.05)" }}>
+              <svg viewBox="0 0 240 68" style={{ width: "100%", height: "64px", display: "block" }}>
+                {/* Horizontal reference grid lines */}
+                <line x1="0" y1="60" x2="240" y2="60" stroke="#1E293B" strokeWidth="1" strokeDasharray="2,2" />
+                <line x1="0" y1="26" x2="240" y2="26" stroke="rgba(251, 146, 60, 0.2)" strokeWidth="1" strokeDasharray="3,3" />
+                <line x1="0" y1="8" x2="240" y2="8" stroke="rgba(244, 63, 94, 0.2)" strokeWidth="1" strokeDasharray="3,3" />
+                
+                {/* Live Vibration RMS sparkline */}
+                <polyline 
+                  points={vibPolyline} 
+                  fill="none" 
+                  stroke="#A855F7" 
+                  strokeWidth="1.5" 
+                  strokeOpacity="0.7"
+                />
+
+                {/* Live Delta Tilt sparkline */}
+                <polyline 
+                  points={tiltPolyline} 
+                  fill="none" 
+                  stroke="#38BDF8" 
+                  strokeWidth="2.5" 
+                />
+
+                {/* Live tracking dot at head */}
+                {hasHistory && (
+                  <circle 
+                    cx="240" 
+                    cy={60 - Math.min(52, (latestTilt / 8.0) * 52)} 
+                    r="3.5" 
+                    fill="#38BDF8" 
+                    style={{ filter: "drop-shadow(0 0 4px #38BDF8)" }}
+                  />
+                )}
               </svg>
             </div>
-            <code>ΔPITCH · ΔROLL · VIBRATION RMS</code>
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: "6px", fontSize: "9px", color: "var(--color-text-muted)" }}>
+              <span style={{ color: "#38BDF8" }}>● Delta Tilt (0°–8°+)</span>
+              <span style={{ color: "#A855F7" }}>● Vibration RMS</span>
+              <span>Rolling 25s</span>
+            </div>
           </div>
         </aside>
       </section>
