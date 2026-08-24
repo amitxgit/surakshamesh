@@ -96,13 +96,6 @@ export default function Dashboard() {
     setBusy(false);
   };
 
-  const simulate = async (kind: string) => {
-    setBusy(true);
-    await fetch(`/api/demo/${kind}`, { method: "POST" });
-    await refresh();
-    setBusy(false);
-  };
-
   const exportCSV = () => {
     if (!status) return;
     const headers = "Timestamp,NodeID,Role,DeltaPitch_deg,DeltaRoll_deg,Vibration_g,RiskLevel,Status\n";
@@ -178,60 +171,6 @@ export default function Dashboard() {
         <div className="top-meta" style={{ display: "flex", gap: "10px", alignItems: "center" }}>
           <span>SECTOR / DEMO-01</span>
           
-          <button 
-            onClick={toggleBlast}
-            disabled={busy}
-            title="Suppress false alarms during planned mine detonation"
-            style={{
-              padding: "5px 10px",
-              background: isBlastActive ? "#F59E0B" : "rgba(245, 158, 11, 0.15)",
-              border: "1px solid #F59E0B",
-              borderRadius: "6px",
-              color: isBlastActive ? "#000" : "#FBBF24",
-              cursor: "pointer",
-              fontSize: "11px",
-              fontWeight: 600
-            }}
-          >
-            {isBlastActive ? `💥 BLAST (${blastRemaining}s)` : "💥 BLAST MODE (60s)"}
-          </button>
-
-          <button 
-            onClick={calibrate}
-            disabled={busy}
-            title="Set current physical sensor position as 0.0° level ground"
-            style={{
-              padding: "5px 10px",
-              background: "rgba(59, 130, 246, 0.15)",
-              border: "1px solid #3B82F6",
-              borderRadius: "6px",
-              color: "#60A5FA",
-              cursor: "pointer",
-              fontSize: "11px",
-              fontWeight: 600
-            }}
-          >
-            🎯 TARE / ZERO
-          </button>
-
-          <button 
-            onClick={resetAll}
-            disabled={busy}
-            title="Clear all active alarms, reset logs and re-zero"
-            style={{
-              padding: "5px 10px",
-              background: "rgba(239, 68, 68, 0.15)",
-              border: "1px solid #EF4444",
-              borderRadius: "6px",
-              color: "#F87171",
-              cursor: "pointer",
-              fontSize: "11px",
-              fontWeight: 600
-            }}
-          >
-            🔄 RESET
-          </button>
-
           <button 
             onClick={() => setAudioEnabled(a => !a)}
             title={audioEnabled ? "Mute Web Audio Alarm" : "Enable Web Audio Alarm"}
@@ -322,23 +261,6 @@ export default function Dashboard() {
               <i style={{ strokeDashoffset: 126 - samplePercent * 1.26 }} />
             </div>
             <p>Deviation is calculated relative to your tared ground zero.</p>
-            <button 
-              onClick={resetAll}
-              disabled={busy}
-              style={{
-                width: "100%",
-                marginTop: "12px",
-                padding: "8px",
-                background: "var(--color-bg-elevated)",
-                border: "1px solid var(--color-border-mid)",
-                borderRadius: "6px",
-                color: "var(--color-text-primary)",
-                cursor: "pointer",
-                fontSize: "12px"
-              }}
-            >
-              🔄 Reset Alarms &amp; Baseline
-            </button>
           </div>
         </aside>
 
@@ -347,21 +269,50 @@ export default function Dashboard() {
             <div>
               <p className="eyebrow">LIVE MESH TOPOLOGY</p>
               <h2>Surface Sensor Mesh</h2>
-              <small>{onlineCount} ACTIVE NODES · HEX STATUS MAP</small>
+              <small>{onlineCount} ACTIVE NODES · REAL HARDWARE TELEMETRY</small>
             </div>
-            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-              <button disabled={busy} onClick={toggleBlast} style={{ borderColor: "#F59E0B", color: "#FBBF24" }}>
-                💥 Blast Mode
+            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+              <button 
+                disabled={busy} 
+                onClick={toggleBlast} 
+                title="Mute false vibration alarms during planned mine detonation"
+                style={{ 
+                  background: isBlastActive ? "#F59E0B" : "rgba(245, 158, 11, 0.12)", 
+                  borderColor: "#F59E0B", 
+                  color: isBlastActive ? "#000" : "#FBBF24",
+                  fontWeight: 600
+                }}
+              >
+                {isBlastActive ? `💥 Blast Active (${blastRemaining}s)` : "💥 Blast Mode (60s)"}
               </button>
-              <button disabled={busy} onClick={calibrate} style={{ borderColor: "#3B82F6", color: "#60A5FA" }}>
-                🎯 Zero
+
+              <button 
+                disabled={busy} 
+                onClick={calibrate} 
+                title="Tare/Zero initial tilt offset for all nodes"
+                style={{ 
+                  background: "rgba(59, 130, 246, 0.12)", 
+                  borderColor: "#3B82F6", 
+                  color: "#60A5FA",
+                  fontWeight: 600
+                }}
+              >
+                🎯 Zero Baseline
               </button>
-              <button disabled={busy} onClick={resetAll} style={{ borderColor: "#EF4444", color: "#F87171" }}>
-                🔄 Reset
+
+              <button 
+                disabled={busy} 
+                onClick={resetAll} 
+                title="Master reset: clears all alarms and event logs"
+                style={{ 
+                  background: "rgba(239, 68, 68, 0.12)", 
+                  borderColor: "#EF4444", 
+                  color: "#F87171",
+                  fontWeight: 600
+                }}
+              >
+                🔄 Reset System
               </button>
-              <button disabled={busy} onClick={() => simulate("normal")}>Normal</button>
-              <button disabled={busy} onClick={() => simulate("shift")}>Shift</button>
-              <button disabled={busy} className="critical-button" onClick={() => simulate("collapse")}>Cave-In</button>
             </div>
           </div>
           <HexMeshCanvas
