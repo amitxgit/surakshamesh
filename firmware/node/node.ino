@@ -1,17 +1,17 @@
 /*
  * SurakshaMesh Node Firmware — SIH26025
- * Unified sketch for Central Gateway & Mesh Field Nodes.
+ * Unified sketch for Central Gateway & Mesh Field Nodes with Active Buzzer.
  *
  * Board Configurations:
- *   NODE_INDEX 1, IS_GATEWAY 1 -> Central Gateway Node (NODE-01) with MAX98357A I2S Speaker & Serial
- *   NODE_INDEX 2, IS_GATEWAY 0 -> Mesh Node 02 (NODE-02) field sensor with Active Buzzer on power bank
- *   NODE_INDEX 3, IS_GATEWAY 0 -> Mesh Node 03 (NODE-03) field sensor with Active Buzzer on power bank
+ *   NODE_INDEX 1, IS_GATEWAY 1 -> Central Gateway Node (NODE-01) with Active Buzzer & USB/Wi-Fi Telemetry
+ *   NODE_INDEX 2, IS_GATEWAY 0 -> Mesh Node 02 (NODE-02) field sensor with Active Buzzer
+ *   NODE_INDEX 3, IS_GATEWAY 0 -> Mesh Node 03 (NODE-03) field sensor with Active Buzzer
  *
- * Wiring:
+ * Wiring (Identical for all 3 nodes):
  *   MPU6050:      VCC -> 3V3 | GND -> GND | SDA -> GPIO 21 | SCL -> GPIO 22 | AD0 -> GND
- *   Active Buzzer: Pos(+) -> GPIO 14 | Neg(-) -> GND (on Field Nodes 02 & 03)
- *   MAX98357A:    VCC -> 5V/VIN | GND -> GND | LRC/WS -> GPIO 25 | BCLK -> GPIO 26 | DIN -> GPIO 27 (on Gateway 01)
- *   Status LED:   Anode -> GPIO 25 (Field) or Onboard LED GPIO 2
+ *   Active Buzzer: Pos(+) -> GPIO 14 | Neg(-) -> GND
+ *   Status LED:   Onboard LED (GPIO 2)
+ *   TP4056 + Batt:OUT+ -> VIN | OUT- -> GND
  */
 
 #include <Wire.h>
@@ -33,8 +33,7 @@
 
 // Peripherals
 #define USE_ONBOARD_LED  1
-#define USE_BUZZER       1          // Active Buzzer on Field Nodes (GPIO 14)
-#define USE_MAX98357A    1          // I2S Audio Amp on Gateway (GPIO 25, 26, 27)
+#define USE_BUZZER       1          // Active Buzzer on GPIO 14 (All nodes)
 
 // Pin Definitions
 #define MPU_ADDR         0x68
@@ -42,16 +41,6 @@
 #define SCL_PIN          22
 #define PIN_BUZZER       14
 #define PIN_ONBOARD      2
-
-// I2S Audio Pins for MAX98357A (Central Gateway)
-#if IS_GATEWAY && USE_MAX98357A
-#include "driver/i2s.h"
-#define I2S_PORT         I2S_NUM_0
-#define I2S_LRC_PIN      25         // WS / LRC
-#define I2S_BCLK_PIN     26         // BCLK
-#define I2S_DOUT_PIN     27         // DIN
-#define SAMPLE_RATE      16000
-#endif
 
 // Sampling and Thresholds
 #define SAMPLE_HZ        50
@@ -89,6 +78,7 @@ static int   vib_i = 0;
 static int   vib_n = 0;
 static uint8_t risk = 0;
 static uint8_t max_mesh_risk = 0;   // Highest risk heard on mesh
+static uint32_t last_mesh_alert = 0;
 static uint32_t watch_since = 0;
 static uint32_t green_since = 0;
 static uint32_t last_send = 0;
@@ -108,87 +98,40 @@ static const char* getNodeRole(uint8_t id) {
   return (id == 1) ? "gateway" : "field";
 }
 
-// ==================== I2S Siren Generator (MAX98357A) ====================
-#if IS_GATEWAY && USE_MAX98357A
-static void i2s_init_audio() {
-  i2s_config_t i2s_config = {
-    .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_TX),
-    .sample_rate = SAMPLE_RATE,
-    .bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT,
-    .channel_format = I2S_CHANNEL_FMT_RIGHT_LEFT,
-    .communication_format = I2S_COMM_FORMAT_STAND_I2S,
-    .intr_alloc_flags = 0,
-    .dma_buf_count = 4,
-    .dma_buf_len = 256,
-    .use_apll = false,
-    .tx_desc_auto_clear = true
-  };
-  i2s_pin_config_t pin_config = {
-    .bck_io_num = I2S_BCLK_PIN,
-    .ws_io_num = I2S_LRC_PIN,
-    .data_out_num = I2S_DOUT_PIN,
-    .data_in_num = I2S_PIN_NO_CHANGE
-  };
-  i2s_driver_install(I2S_PORT, &i2s_config, 0, NULL);
-  i2s_set_pin(I2S_PORT, &pin_config);
-}
-
-static void play_siren_step(uint8_t alert_level) {
-  if (alert_level < 2) return; // Silent on normal/watch
-  
-  static float phase = 0;
-  static uint32_t last_tone_swap = 0;
-  static bool tone_hi = false;
-  
-  uint32_t now_ms = millis();
-  if (now_ms - last_tone_swap > (alert_level == 3 ? 250 : 500)) {
-    last_tone_swap = now_ms;
-    tone_hi = !tone_hi;
-  }
-
-  float freq = tone_hi ? (alert_level == 3 ? 1200.0f : 880.0f) : (alert_level == 3 ? 750.0f : 587.0f);
-  float phase_inc = (2.0f * M_PI * freq) / SAMPLE_RATE;
-
-  int16_t sample_buffer[128 * 2];
-  for (int i = 0; i < 128; i++) {
-    int16_t sample = (int16_t)(sinf(phase) * 12000.0f); // ~40% volume sine wave
-    phase += phase_inc;
-    if (phase >= 2.0f * M_PI) phase -= 2.0f * M_PI;
-    sample_buffer[i * 2] = sample;     // Left
-    sample_buffer[i * 2 + 1] = sample; // Right
-  }
-  size_t bytes_written;
-  i2s_write(I2S_PORT, sample_buffer, sizeof(sample_buffer), &bytes_written, 10);
-}
-#endif
-
 // ==================== Active Buzzer & LED Feedback ====================
 static void update_feedback(uint8_t r) {
-#if USE_ONBOARD_LED
-  digitalWrite(PIN_ONBOARD, (r >= 1) ? HIGH : LOW);
+  uint8_t effective_risk = r;
+
+#if IS_GATEWAY
+  // On Gateway, alert if own sensor OR any mesh node triggers alarm
+  if (millis() - last_mesh_alert < 3000 && max_mesh_risk > effective_risk) {
+    effective_risk = max_mesh_risk;
+  } else if (millis() - last_mesh_alert >= 3000) {
+    max_mesh_risk = 0;
+  }
 #endif
 
-#if !IS_GATEWAY && USE_BUZZER
+#if USE_ONBOARD_LED
+  digitalWrite(PIN_ONBOARD, (effective_risk >= 1) ? HIGH : LOW);
+#endif
+
+#if USE_BUZZER
   uint32_t now_ms = millis();
-  if (r == 0) {
+  if (effective_risk == 0) {
     digitalWrite(PIN_BUZZER, LOW);
-  } else if (r == 1) {
-    // Short periodic chirp every 2.5s
+  } else if (effective_risk == 1) {
+    // Short periodic chirp every 2.5s (50ms beep)
     bool chirp = (now_ms % 2500) < 50;
     digitalWrite(PIN_BUZZER, chirp ? HIGH : LOW);
-  } else if (r == 2) {
+  } else if (effective_risk == 2) {
     // Pulsing warning beep (200ms ON / 200ms OFF)
     bool beep = (now_ms % 400) < 200;
     digitalWrite(PIN_BUZZER, beep ? HIGH : LOW);
-  } else if (r == 3) {
+  } else if (effective_risk == 3) {
     // Rapid emergency alarm (80ms ON / 80ms OFF)
     bool alert = (now_ms % 160) < 80;
     digitalWrite(PIN_BUZZER, alert ? HIGH : LOW);
   }
-#endif
-
-#if IS_GATEWAY && USE_MAX98357A
-  play_siren_step(max(r, max_mesh_risk));
 #endif
 }
 
@@ -306,8 +249,11 @@ void on_rx(const uint8_t *mac, const uint8_t *data, int len) {
   packet_t p;
   memcpy(&p, data, sizeof(p));
   
-  // Track highest risk reported across the entire mesh
-  if (p.risk > max_mesh_risk) max_mesh_risk = p.risk;
+  // Track mesh alert for gateway buzzer
+  if (p.risk >= 2) {
+    max_mesh_risk = p.risk;
+    last_mesh_alert = millis();
+  }
   
   emit_json(&p);
 #if USE_WIFI_HTTP
@@ -324,13 +270,9 @@ void setup() {
   pinMode(PIN_ONBOARD, OUTPUT);
 #endif
 
-#if !IS_GATEWAY && USE_BUZZER
+#if USE_BUZZER
   pinMode(PIN_BUZZER, OUTPUT);
   digitalWrite(PIN_BUZZER, LOW);
-#endif
-
-#if IS_GATEWAY && USE_MAX98357A
-  i2s_init_audio();
 #endif
 
   Wire.begin(SDA_PIN, SCL_PIN);
