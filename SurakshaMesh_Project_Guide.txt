@@ -1,0 +1,252 @@
+================================================================================
+                    SURAKSHAMESH — PROJECT EXPLAINER
+   AI-Enabled Low-Cost Real-Time Mine Subsidence Early Warning System
+================================================================================
+
+Target Audience: School Students (Classes 8th to 12th) & Technical Judges
+Project Name: SurakshaMesh (Smart India Hackathon 2026 - Problem Statement: SIH26025)
+Organization: Coal India Limited / Ministry of Coal
+
+================================================================================
+TABLE OF CONTENTS
+================================================================================
+1. The Real-World Problem (What We Solved)
+2. Our Solution (How We Solved It)
+3. The Hardware We Used (1st Prototype)
+4. What is the Firmware Doing? (ESP32 Code)
+5. The Backend & Dashboard (How the Screen Works)
+6. Where Does the "AI" Come In?
+7. Summary of the 1st Prototype
+8. THE NEXT PHASE FOR SIH FINALE: Upgrading to LoRa & Scaling
+9. POWER MANAGEMENT: Solar + 18650 Battery (Self-Sustaining Nodes)
+10. SENSOR EXPANSIONS: Crack & Multi-Layer Geotechnical Sensors
+11. ADVANCED AI ROADMAP: LSTM & Knothe Subsidence Time Curve
+
+
+================================================================================
+1. THE REAL-WORLD PROBLEM (What We Solved)
+================================================================================
+Imagine digging a deep underground tunnel to extract coal. Once millions of tons 
+of coal are removed, huge empty rooms (voids) are left deep inside the earth.
+
+Over weeks, months, or years, the heavy layers of rock and soil above these 
+empty spaces start to bend, sag, and eventually collapse inward. This sinking 
+of the earth's surface is called "MINE SUBSIDENCE".
+
+Why is this a big problem?
+- Roads, railway tracks, and power lines over the mine crack and break.
+- Villages and houses built near the mine can develop huge cracks or cave in.
+- Toxic gases or underground water can burst out.
+
+The Old Method (Why it failed):
+Currently, survey officers walk around once every few weeks with very expensive 
+surveying tripods (DGPS/Total Stations). But if the ground starts sinking at 
+2:00 AM on a rainy Tuesday night, nobody is there to see it until disaster strikes.
+
+Our Mission:
+Replace slow, expensive once-a-month human surveys with a smart, 24/7 automated 
+early warning system that alerts engineers and villagers BEFORE a collapse happens!
+
+
+================================================================================
+2. OUR SOLUTION (How We Solved It)
+================================================================================
+We built "SurakshaMesh" — a dense, low-cost wireless network of smart sensor 
+devices (called "Nodes") planted across the ground above the underground coal mine.
+
+Think of it like a giant "digital safety net" spread over the surface:
+1. Every node continuously feels the ground beneath it (measuring tiny tilts and shakes).
+2. If any part of the ground begins to sink, the nearby nodes detect the tilt instantly.
+3. The nodes talk to each other wirelessly using radio signals (like walkie-talkies).
+4. An alarm sounds on the spot (Buzzer & Red Light), and an alert pops up on the 
+   mine safety dashboard on laptops and mobile phones in real-time!
+
+
+================================================================================
+3. THE HARDWARE WE USED (What's Inside a Node?)
+================================================================================
+Each SurakshaMesh node in the first prototype is built from:
+
+1. ESP32 Microcontroller (The "Brain"):
+   - A tiny $4 computer chip that runs our software.
+   - It has built-in Wi-Fi and a special fast radio protocol called "ESP-NOW".
+
+2. MPU6050 Sensor (The "Inner Ear"):
+   - Contains an Accelerometer (measures gravity and tilt) and a Gyroscope 
+     (measures turning speed). 
+   - This is the exact same chip inside your smartphone that knows when you rotate 
+     the screen or count your steps.
+
+3. RGB LED & Buzzer (The "Alarms"):
+   - Acts like a traffic light right on the field:
+     * GREEN  = Safe (Normal ground)
+     * YELLOW = Watch (Minor ground movement detected)
+     * RED    = Danger / Critical (Evacuate! Ground is collapsing!)
+   - An active buzzer sounds a loud beeping tone during danger.
+
+4. 3D-Printed Weatherproof Enclosure:
+   - A strong, waterproof plastic shell designed with CAD code so rain, dust, 
+     and coal dirt cannot damage the electronics.
+
+
+================================================================================
+4. WHAT IS THE FIRMWARE DOING? (The Code Inside the ESP32)
+================================================================================
+Firmware is the software running directly inside the chip. Here is what it does 
+step-by-step, 50 times every single second:
+
+Step 1: Read the Motion Sensor
+- The chip reads raw data from the MPU6050 over two wires called I2C (SDA and SCL).
+- It measures acceleration along 3 axes (X, Y, Z) and rotation speed.
+
+Step 2: Smooth Out the Noise (The "Complementary Filter")
+- In real life, wind or a passing truck causes tiny false vibrations. 
+- The code uses a mathematical trick called a "Complementary Filter" (combining 
+  98% smooth gyro tracking + 2% gravity checks) to find the true, steady tilt angle 
+  (Pitch and Roll) without jitter.
+
+Step 3: Measure Vibration RMS (Root-Mean-Square)
+- The code keeps a rolling memory of the last 50 vibration readings to calculate 
+  how violently the ground is shaking.
+
+Step 4: The Smart Decision Brain (Risk Classification)
+- The code checks simple safety rules:
+  * Tilt < 2°: Risk = 0 (GREEN / Normal)
+  * Tilt between 2° and 5°: Risk = 1 (YELLOW / Watch)
+  * Tilt > 8° OR sustained vibration: Risk = 3 (RED / Critical Alert!)
+
+Step 5: Broadcast Over the Air (ESP-NOW Radio)
+- Every second, the node packs its ID, Pitch, Roll, Vibration, and Risk into a tiny 
+  digital packet and transmits it through the air directly to the Gateway node.
+
+
+================================================================================
+5. THE BACKEND & DASHBOARD (How the Screen Works)
+================================================================================
+1. Central Gateway Node (NODE-01):
+   - One ESP32 stays plugged into a laptop via USB cable. It listens to all the 
+     field nodes over radio, receives their packets, and sends them out as 
+     JSON text lines over the USB Serial Port (115200 baud).
+
+2. Serial Bridge (Node.js / Python):
+   - A background script reads the serial USB port and forwards the live telemetry 
+     data to the web application over fast WebSockets and HTTP APIs.
+
+3. Real-Time Web Dashboard (Next.js 16, React 19 & Tailwind CSS):
+   - Shows a beautiful interactive 3D map of hexagonal cells representing the mine.
+   - When you physically tilt a node on your desk or wooden plank, the matching 
+     hexagon on the screen turns from glowing green to bright red in under 50 milliseconds!
+   - Features sound alerts, 3D tilt models, and live CSV data logging.
+
+
+================================================================================
+6. WHERE DOES THE "AI" COME IN? (Artificial Intelligence Explained)
+================================================================================
+1. Isolation Forest Machine Learning:
+   - Learns the quiet baseline of the mine surface.
+   - Flags anomalous deformation trends before visible cracks appear.
+
+2. Blast vs. Subsidence Classifier:
+   - Dynamite blasting causes a huge shake, but tilt quickly returns to normal.
+   - Real subsidence causes a shake AND leaves permanent ground tilt.
+   - Our system avoids false alarms during mine blast hours.
+
+3. Spatial Coherence (Mesh Teamwork):
+   - 1 node shaking = local noise / vehicle.
+   - 3 adjacent nodes tilting together = confirmed large-scale strata subsidence!
+
+
+================================================================================
+7. SUMMARY OF THE 1ST PROTOTYPE
+================================================================================
+"SurakshaMesh is an affordable, battery-powered wireless mesh of smart sensors 
+that acts as an always-on digital nervous system for coal mines, detecting ground 
+subsidence and warning people before disaster strikes."
+
+
+================================================================================
+8. THE NEXT PHASE FOR SIH FINALE: UPGRADING TO LoRa & MASSIVE SCALING
+================================================================================
+Why switch from Wi-Fi/ESP-NOW to LoRa?
+- ESP-NOW / Wi-Fi is great for benchtop prototypes and 50–100 meter demos.
+- In a real open-cast or underground coal mine (spanning 2 km to 5 km), 2.4 GHz 
+  Wi-Fi signals cannot penetrate through rocky hills and coal spoil dumps.
+
+How LoRa (Long Range) Solves This:
+- LoRa operates on sub-GHz frequencies (868 MHz in India / Europe or 433 MHz).
+- Range: 2 km to 10+ km with tiny antennas, penetrating through dust, rain, and rocks!
+- Power: Uses 10x less power than Wi-Fi.
+
+Hardware Needed for Finale:
+- SX1278 (Ra-02) or SX1262 LoRa SPI modules connected to each ESP32.
+  * SCK  -> GPIO 18
+  * MISO -> GPIO 19
+  * MOSI -> GPIO 23
+  * NSS  -> GPIO 5
+  * RST  -> GPIO 14
+  * DIO0 -> GPIO 2
+
+How to Control 50 to 100+ Nodes:
+1. LoRaWAN / Slotted TDMA Mesh:
+   - Each node is assigned a unique Node ID (e.g., NODE-01 to NODE-99).
+   - Nodes send a short 16-byte packet every 1 to 5 minutes (or immediately on alert).
+2. Multi-Hop Mesh Routing:
+   - Faraway nodes transmit packets to intermediate nodes, which "hop" the data 
+     forward until it reaches the central mine office gateway.
+
+
+================================================================================
+9. POWER MANAGEMENT: SOLAR + 18650 BATTERY (Years of Autonomous Life)
+================================================================================
+In a real mine, you cannot plug sensors into wall sockets or swap power banks daily.
+
+The Solar Power Architecture:
+1. 18650 Lithium-Ion Battery (3.7V, 2600 mAh - protected cell).
+2. TP4056 Solar Battery Charger Module with over-discharge protection (DW01).
+3. 1W–2W 6V Monocrystalline Mini Solar Panel mounted on the top lid of the enclosure.
+4. Ultra-Low Power Deep Sleep:
+   - The ESP32 stays in deep sleep consuming only 10 micro-amperes (0.01 mA).
+   - Every 5 minutes, it wakes up, reads the sensor for 200 ms, sends a LoRa packet, 
+     and goes back to sleep.
+   - Hardware Interrupt: If the MPU6050 detects sudden violent shaking or tilt, 
+     its INT pin instantly wakes up the ESP32 to send an emergency alert immediately!
+   - Result: The node can run for 3 to 5+ YEARS with zero maintenance!
+
+
+================================================================================
+10. SENSOR EXPANSIONS: CRACK & MULTI-LAYER GEOTECHNICAL SENSORS
+================================================================================
+To make SurakshaMesh the ultimate geotechnical safety system for Coal India:
+
+1. Surface Tension Crack Sensors (Flex / Linear Potentiometer):
+   - As subsidence develops, the ground stretches before dropping. 
+   - A flex sensor or spring-loaded draw-wire across known fault lines measures 
+     millimeter-level crack opening.
+
+2. Draw-Wire Extensometer Between Adjacent Nodes:
+   - A thin stainless steel cable connecting two posts. If the distance between 
+     the posts increases or decreases by even 2 mm, it measures lateral ground strain.
+
+3. Cellular 4G / GSM Fallback (Central Gateway):
+   - The central gateway uses a SIM800L / SIM7600 4G LTE module to send instant 
+     emergency SMS alerts directly to mine managers, DGMS officials, and nearby villagers.
+
+
+================================================================================
+11. ADVANCED AI ROADMAP: LSTM & KNOTHE SUBSIDENCE PREDICTION CURVE
+================================================================================
+For the Grand Finale presentation:
+
+1. Knothe Time-Factor Model (Mining Geology Math):
+   - Predicts the exact 3D subsidence bowl (trough) forming above the coal seam based 
+     on panel extraction speed and mining depth.
+
+2. Long Short-Term Memory (LSTM) Neural Network:
+   - Trained on weeks of time-series tilt logs.
+   - Forecasts: "Based on the last 48 hours of slope creep, this zone will reach 
+     critical danger threshold (8°) in approximately 14 hours."
+   - Gives mine rescue teams valuable time to evacuate heavy machinery and personnel!
+
+================================================================================
+                    SURAKSHAMESH — SAFETY MEETS INNOVATION
+================================================================================

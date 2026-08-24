@@ -19,8 +19,8 @@
 #include <math.h>
 
 // ==================== Node Configuration ====================
-#define NODE_INDEX       1          // 1 for NODE-01, 2 for NODE-02, 3 for NODE-03
-#define IS_GATEWAY       1          // 1 on Central Gateway (NODE-01), 0 on Field Nodes
+#define NODE_INDEX       3          // 1 for NODE-01, 2 for NODE-02, 3 for NODE-03
+#define IS_GATEWAY       0          // 1 on Central Gateway (NODE-01), 0 on Field Nodes
 #define FLIP_PITCH       0          // Set to 1 if IMU mounted reversed on pitch axis
 #define FLIP_ROLL        0          // Set to 1 if IMU mounted reversed on roll axis
 
