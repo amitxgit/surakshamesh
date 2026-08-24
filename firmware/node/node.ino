@@ -50,7 +50,7 @@
 #define WATCH_DEG        2.0f
 #define WARN_DEG         5.0f
 #define CRIT_DEG         8.0f
-#define VIB_G            0.15f
+#define VIB_G            0.20f
 #define WATCH_HOLD_MS    5000
 #define GREEN_HOLD_MS    2000
 #define GREEN_BACK_DEG   1.5f
@@ -64,14 +64,18 @@
 // Packet structure sent over ESP-NOW
 typedef struct __attribute__((packed)) {
   uint8_t  id;           // 1, 2, 3
-  float    pitch;        // degrees
-  float    roll;         // degrees
+  float    pitch;        // degrees (relative delta)
+  float    roll;         // degrees (relative delta)
   float    vib;          // g RMS
   uint32_t t_ms;         // uptime millis
   uint8_t  risk;         // 0: Normal, 1: Watch, 2: Warning, 3: Critical
 } packet_t;
 
-static float pitch_deg = 0, roll_deg = 0;
+static float pitch_raw = 0, roll_raw = 0;
+static float pitch_zero = 0, roll_zero = 0; // Auto-tared resting position
+static float delta_pitch = 0, delta_roll = 0;
+static bool  tared = false;
+
 static float vib_rms = 0;
 static float vib_buf[VIB_WINDOW];
 static int   vib_i = 0;
@@ -117,18 +121,15 @@ static void update_feedback(uint8_t r) {
 
 #if USE_BUZZER
   uint32_t now_ms = millis();
-  if (effective_risk == 0) {
+  if (effective_risk <= 1) {
+    // Completely SILENT during Normal (0) and Watch (1)
     digitalWrite(PIN_BUZZER, LOW);
-  } else if (effective_risk == 1) {
-    // Short periodic chirp every 2.5s (50ms beep)
-    bool chirp = (now_ms % 2500) < 50;
-    digitalWrite(PIN_BUZZER, chirp ? HIGH : LOW);
   } else if (effective_risk == 2) {
-    // Pulsing warning beep (200ms ON / 200ms OFF)
+    // Pulsing warning beep on >5° tilt (200ms ON / 200ms OFF)
     bool beep = (now_ms % 400) < 200;
     digitalWrite(PIN_BUZZER, beep ? HIGH : LOW);
   } else if (effective_risk == 3) {
-    // Rapid emergency alarm (80ms ON / 80ms OFF)
+    // Rapid emergency alarm on >8° critical tilt (80ms ON / 80ms OFF)
     bool alert = (now_ms % 160) < 80;
     digitalWrite(PIN_BUZZER, alert ? HIGH : LOW);
   }
@@ -268,6 +269,7 @@ void setup() {
 
 #if USE_ONBOARD_LED
   pinMode(PIN_ONBOARD, OUTPUT);
+  digitalWrite(PIN_ONBOARD, LOW);
 #endif
 
 #if USE_BUZZER
@@ -329,15 +331,32 @@ void loop() {
 
   float acc_pitch = atan2f(-ax, sqrtf(ay * ay + az * az)) * 57.2957795f;
   float acc_roll  = atan2f(ay, az) * 57.2957795f;
-  pitch_deg = ALPHA * (pitch_deg + gy * dt) + (1.0f - ALPHA) * acc_pitch;
-  roll_deg  = ALPHA * (roll_deg  + gx * dt) + (1.0f - ALPHA) * acc_roll;
+  pitch_raw = ALPHA * (pitch_raw + gy * dt) + (1.0f - ALPHA) * acc_pitch;
+  roll_raw  = ALPHA * (roll_raw  + gx * dt) + (1.0f - ALPHA) * acc_roll;
 
 #if FLIP_PITCH
-  pitch_deg = -pitch_deg;
+  pitch_raw = -pitch_raw;
 #endif
 #if FLIP_ROLL
-  roll_deg = -roll_deg;
+  roll_raw = -roll_raw;
 #endif
+
+  // Auto-tare baseline zero offset during initial 1.5 seconds
+  static uint32_t tare_samples = 0;
+  static float sum_p = 0, sum_r = 0;
+  if (!tared) {
+    sum_p += pitch_raw;
+    sum_r += roll_raw;
+    tare_samples++;
+    if (tare_samples >= 50) {
+      pitch_zero = sum_p / 50.0f;
+      roll_zero  = sum_r / 50.0f;
+      tared = true;
+    }
+  }
+
+  delta_pitch = pitch_raw - pitch_zero;
+  delta_roll  = roll_raw - roll_zero;
 
   float mag = sqrtf(ax * ax + ay * ay + az * az);
   float ac = mag - 1.0f;
@@ -349,7 +368,7 @@ void loop() {
   vib_rms = sqrtf(ss / vib_n);
 
   uint32_t now = millis();
-  risk = classify(pitch_deg, roll_deg, vib_rms, now);
+  risk = classify(delta_pitch, delta_roll, vib_rms, now);
   update_feedback(risk);
 
   if (now - last_send < SEND_MS) return;
@@ -357,8 +376,8 @@ void loop() {
 
   packet_t p;
   p.id = NODE_INDEX;
-  p.pitch = pitch_deg;
-  p.roll = roll_deg;
+  p.pitch = delta_pitch;
+  p.roll = delta_roll;
   p.vib = vib_rms;
   p.t_ms = now;
   p.risk = risk;
