@@ -51,7 +51,6 @@ const addEvent = (level: number, text: string) => {
 export function triggerBlastSuppression(seconds = 60) {
   const time = now();
   if (time < state.suppressBlastUntil) {
-    // If already active, toggle OFF
     state.suppressBlastUntil = 0;
     addEvent(0, "Scheduled blast suppression deactivated manually. Full vibration alarms restored.");
   } else {
@@ -64,8 +63,12 @@ export function triggerBlastSuppression(seconds = 60) {
 export function resetSystem() {
   state.events = [];
   state.suppressBlastUntil = 0;
-  state.baseline.samples = 60;
-  state.baseline.ready = true;
+  
+  // Reset statistical baseline learning counter to 0 so it re-learns live
+  state.baseline.samples = 0;
+  state.baseline.meanVib = 0.04;
+  state.baseline.m2Vib = 0;
+  state.baseline.ready = false;
   
   state.nodes.forEach(node => {
     node.baselinePitch = node.pitch;
@@ -75,10 +78,10 @@ export function resetSystem() {
     node.deltaTilt = 0;
     node.level = 0;
     node.tiltStartedAt = undefined;
-    node.baselineReady = true;
+    node.baselineReady = false;
   });
 
-  addEvent(0, "SYSTEM RESET: All alarms cleared, event logs flushed, and baseline zero-tared.");
+  addEvent(0, "SYSTEM RESET: Alarms cleared, baseline zeroed, and 60-sample learning restarted.");
   return status();
 }
 
@@ -130,7 +133,7 @@ export function ingest(p: Packet) {
     if (deltaTilt < 1.5) tiltStartedAt = undefined;
   }
 
-  // Baseline vibration statistical accumulation
+  // Baseline statistical accumulation while ground is quiet
   const b = state.baseline;
   if (deltaTilt < 1.5 && p.vibration < 0.2) {
     b.samples = Math.min(60, b.samples + 1);
@@ -200,7 +203,9 @@ export function status() {
   let overall = 0;
   let rationale = isBlastSuppressed 
     ? `BLAST SUPPRESSION ACTIVE (${blastRemaining}s remaining) — Transient vibration alarms muted.` 
-    : "Ground is stable. Tilt and vibration are within normal baseline.";
+    : state.baseline.ready
+      ? "Ground is stable. Tilt and vibration are within normal baseline."
+      : `Learning ambient ground baseline (${state.baseline.samples}/60 quiet samples)...`;
 
   if (onlineNodes.length === 0) {
     overall = 0;
@@ -239,42 +244,4 @@ export function status() {
     baseline: { samples: state.baseline.samples, ready: state.baseline.ready },
     blastSuppression: { active: isBlastSuppressed, remainingSeconds: blastRemaining }
   };
-}
-
-export function demo(kind: "normal" | "shift" | "collapse") {
-  state.mode = `demo:${kind}`;
-  const mockBase: Packet[] = [
-    { nodeId: "NODE-01", role: "gateway", pitch: 0, roll: 0, vibration: 0.03 },
-    { nodeId: "NODE-02", role: "field", pitch: 0, roll: 0, vibration: 0.04 },
-    { nodeId: "NODE-03", role: "field", pitch: 0, roll: 0, vibration: 0.035 }
-  ];
-
-  mockBase.forEach(m => {
-    const node = state.nodes.get(m.nodeId);
-    if (node) {
-      node.baselinePitch = 0;
-      node.baselineRoll = 0;
-    }
-  });
-
-  const values =
-    kind === "normal"
-      ? mockBase.map((x, i) => ({ ...x, pitch: 0.1, roll: -0.1, vibration: 0.03 + i * 0.005 }))
-      : kind === "shift"
-        ? mockBase.map((x, i) => ({ ...x, pitch: i ? 3.5 + i : 0.2, roll: i ? 2.1 : 0, vibration: 0.08 }))
-        : mockBase.map((x, i) => ({ ...x, pitch: i ? 9.2 + i : 0.4, roll: i ? 4.5 : 0, vibration: i ? 0.35 : 0.05 }));
-
-  values.forEach(ingest);
-
-  if (kind !== "normal") {
-    values
-      .filter(v => v.nodeId !== "NODE-01")
-      .forEach(v => {
-        const node = state.nodes.get(v.nodeId);
-        if (node) node.tiltStartedAt = now() - 6000;
-      });
-    values.forEach(ingest);
-  }
-
-  return status();
 }
