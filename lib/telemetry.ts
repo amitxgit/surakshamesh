@@ -26,6 +26,7 @@ type State = {
   nodes: Map<string, Node>;
   events: { time: string; level: number; text: string }[];
   baseline: { samples: number; meanVib: number; m2Vib: number; ready: boolean };
+  suppressBlastUntil: number;
   mode: string;
 };
 
@@ -33,6 +34,7 @@ const state: State = (globalThis as any).__surakshaState ?? {
   nodes: new Map(),
   events: [],
   baseline: { samples: 0, meanVib: 0.04, m2Vib: 0, ready: false },
+  suppressBlastUntil: 0,
   mode: "live"
 };
 (globalThis as any).__surakshaState = state;
@@ -46,14 +48,41 @@ const addEvent = (level: number, text: string) => {
   if (state.events.length > 50) state.events.pop();
 };
 
-const defaultOffsets: Record<string, { pitch: number; roll: number }> = {
-  "NODE-01": { pitch: 0, roll: 0 },
-  "NODE-02": { pitch: 0, roll: 0 },
-  "NODE-03": { pitch: 0, roll: 0 }
-};
+export function triggerBlastSuppression(seconds = 60) {
+  const time = now();
+  if (time < state.suppressBlastUntil) {
+    // If already active, toggle OFF
+    state.suppressBlastUntil = 0;
+    addEvent(0, "Scheduled blast suppression deactivated manually. Full vibration alarms restored.");
+  } else {
+    state.suppressBlastUntil = time + seconds * 1000;
+    addEvent(1, `SCHEDULED BLAST SUPPRESSION ACTIVE (${seconds}s). Transient vibration alarms muted.`);
+  }
+  return status();
+}
+
+export function resetSystem() {
+  state.events = [];
+  state.suppressBlastUntil = 0;
+  state.baseline.samples = 60;
+  state.baseline.ready = true;
+  
+  state.nodes.forEach(node => {
+    node.baselinePitch = node.pitch;
+    node.baselineRoll = node.roll;
+    node.deltaPitch = 0;
+    node.deltaRoll = 0;
+    node.deltaTilt = 0;
+    node.level = 0;
+    node.tiltStartedAt = undefined;
+    node.baselineReady = true;
+  });
+
+  addEvent(0, "SYSTEM RESET: All alarms cleared, event logs flushed, and baseline zero-tared.");
+  return status();
+}
 
 export function calibrate(nodeId?: string) {
-  const time = now();
   const nodesToCalibrate = nodeId ? [state.nodes.get(nodeId)].filter(Boolean) : Array.from(state.nodes.values());
   
   nodesToCalibrate.forEach(node => {
@@ -85,7 +114,6 @@ export function ingest(p: Packet) {
   let baselinePitch = old?.baselinePitch ?? p.pitch;
   let baselineRoll = old?.baselineRoll ?? p.roll;
 
-  // Auto-tare on first sample if no prior baseline existed
   if (old === undefined) {
     baselinePitch = p.pitch;
     baselineRoll = p.roll;
@@ -99,7 +127,6 @@ export function ingest(p: Packet) {
   if (deltaTilt >= 2.0) {
     if (!tiltStartedAt) tiltStartedAt = time;
   } else {
-    // Hysteresis reset
     if (deltaTilt < 1.5) tiltStartedAt = undefined;
   }
 
@@ -113,6 +140,8 @@ export function ingest(p: Packet) {
     if (b.samples >= 20) b.ready = true;
   }
 
+  const isBlastSuppressed = time < state.suppressBlastUntil;
+
   // Risk Classification based on Relative Deviation from Baseline
   let level = 0;
   const isPersistent = tiltStartedAt && (time - tiltStartedAt >= 3000);
@@ -123,8 +152,8 @@ export function ingest(p: Packet) {
     level = 2; // Warning on persistent >5 deg
   } else if (deltaTilt >= 2.0) {
     level = 1; // Watch on >2 deg
-  } else if (p.vibration >= 0.15) {
-    level = 1; // Watch on heavy vibration
+  } else if (!isBlastSuppressed && p.vibration >= 0.15) {
+    level = 1; // Watch on vibration only if not during scheduled blast
   }
 
   const n: Node = {
@@ -151,6 +180,8 @@ export function ingest(p: Packet) {
 export function status() {
   const time = now();
   const nodes = Array.from(state.nodes.values());
+  const isBlastSuppressed = time < state.suppressBlastUntil;
+  const blastRemaining = isBlastSuppressed ? Math.max(0, Math.ceil((state.suppressBlastUntil - time) / 1000)) : 0;
 
   // Update online status: offline if no packet received for >5 seconds
   nodes.forEach(n => {
@@ -158,7 +189,7 @@ export function status() {
     const ageMs = time - new Date(n.lastSeen).getTime();
     n.online = ageMs < 5000;
     if (!n.online) {
-      n.level = 0; // Offline nodes don't trigger active alarms
+      n.level = 0;
     }
   });
 
@@ -167,7 +198,9 @@ export function status() {
   const severeTilted = onlineNodes.filter(n => n.deltaTilt >= 8.0);
 
   let overall = 0;
-  let rationale = "Ground is stable. Tilt and vibration are within normal baseline.";
+  let rationale = isBlastSuppressed 
+    ? `BLAST SUPPRESSION ACTIVE (${blastRemaining}s remaining) — Transient vibration alarms muted.` 
+    : "Ground is stable. Tilt and vibration are within normal baseline.";
 
   if (onlineNodes.length === 0) {
     overall = 0;
@@ -176,7 +209,6 @@ export function status() {
     overall = 3;
     rationale = `CRITICAL: Severe ground tilt (${severeTilted.map(n => `${n.nodeId}: ${n.deltaTilt.toFixed(1)}°`).join(", ")}) detected! Trigger site emergency SOP.`;
   } else if (activeTilted.length >= 2) {
-    // Spatial Coherence check
     const samePitchSign = activeTilted.every(n => n.deltaPitch > 1.0) || activeTilted.every(n => n.deltaPitch < -1.0);
     const sameRollSign = activeTilted.every(n => n.deltaRoll > 1.0) || activeTilted.every(n => n.deltaRoll < -1.0);
     const coherent = samePitchSign || sameRollSign;
@@ -204,7 +236,8 @@ export function status() {
     nodes,
     onlineCount: onlineNodes.length,
     events: state.events,
-    baseline: { samples: state.baseline.samples, ready: state.baseline.ready }
+    baseline: { samples: state.baseline.samples, ready: state.baseline.ready },
+    blastSuppression: { active: isBlastSuppressed, remainingSeconds: blastRemaining }
   };
 }
 
@@ -216,7 +249,6 @@ export function demo(kind: "normal" | "shift" | "collapse") {
     { nodeId: "NODE-03", role: "field", pitch: 0, roll: 0, vibration: 0.035 }
   ];
 
-  // Set calibrated offsets
   mockBase.forEach(m => {
     const node = state.nodes.get(m.nodeId);
     if (node) {
