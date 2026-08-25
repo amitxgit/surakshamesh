@@ -27,15 +27,48 @@ type State = {
   events: { time: string; level: number; text: string }[];
   baseline: { samples: number; meanVib: number; m2Vib: number; ready: boolean };
   suppressBlastUntil: number;
-  mode: string;
+  mode: "live" | "simulated";
 };
 
+function createInitialNodes(): Map<string, Node> {
+  const map = new Map<string, Node>();
+  const initial = [
+    { nodeId: "NODE-01", role: "gateway" as const, pitch: 0.12, roll: -0.15, vibration: 0.038 },
+    { nodeId: "NODE-02", role: "field" as const, pitch: 0.25, roll: 0.08, vibration: 0.042 },
+    { nodeId: "NODE-03", role: "field" as const, pitch: -0.18, roll: 0.31, vibration: 0.035 }
+  ];
+  const iso = new Date().toISOString();
+  initial.forEach(p => {
+    map.set(p.nodeId, {
+      ...p,
+      id: p.nodeId,
+      role: p.role,
+      online: true,
+      level: 0,
+      lastSeen: iso,
+      baselineReady: true,
+      baselinePitch: p.pitch,
+      baselineRoll: p.roll,
+      deltaPitch: 0,
+      deltaRoll: 0,
+      deltaTilt: 0
+    });
+  });
+  return map;
+}
+
 const state: State = (globalThis as any).__surakshaState ?? {
-  nodes: new Map(),
-  events: [],
-  baseline: { samples: 0, meanVib: 0.04, m2Vib: 0, ready: false },
+  nodes: createInitialNodes(),
+  events: [
+    {
+      time: new Date().toLocaleTimeString(),
+      level: 0,
+      text: "SurakshaMesh local dashboard initialized. 3 mesh nodes online."
+    }
+  ],
+  baseline: { samples: 60, meanVib: 0.04, m2Vib: 0, ready: true },
   suppressBlastUntil: 0,
-  mode: "live"
+  mode: "simulated"
 };
 (globalThis as any).__surakshaState = state;
 
@@ -47,6 +80,72 @@ const addEvent = (level: number, text: string) => {
   state.events.unshift({ time, level, text });
   if (state.events.length > 50) state.events.pop();
 };
+
+export function setScenario(scenario: "normal" | "watch" | "warning" | "shift" | "critical" | "collapse" | "blast") {
+  const time = now();
+  const iso = new Date(time).toISOString();
+  state.mode = "simulated";
+
+  const n1 = state.nodes.get("NODE-01") || { nodeId: "NODE-01", role: "gateway" } as Node;
+  const n2 = state.nodes.get("NODE-02") || { nodeId: "NODE-02", role: "field" } as Node;
+  const n3 = state.nodes.get("NODE-03") || { nodeId: "NODE-03", role: "field" } as Node;
+
+  switch (scenario) {
+    case "watch":
+      n1.pitch = 0.1; n1.roll = -0.1; n1.vibration = 0.038;
+      n2.pitch = 3.2; n2.roll = -0.6; n2.vibration = 0.052; // Isolated tilt > 2°
+      n3.pitch = -0.2; n3.roll = 0.3; n3.vibration = 0.035;
+      break;
+
+    case "warning":
+    case "shift":
+      // Coherent subsidence: NODE-02 and NODE-03 both tilting >5° synchronously
+      n1.pitch = 1.2; n1.roll = 0.4; n1.vibration = 0.055;
+      n2.pitch = 5.8; n2.roll = -0.8; n2.vibration = 0.082;
+      n3.pitch = 5.4; n3.roll = 0.5; n3.vibration = 0.076;
+      break;
+
+    case "critical":
+    case "collapse":
+      // Severe ground failure >8°
+      n1.pitch = 3.5; n1.roll = 1.2; n1.vibration = 0.125;
+      n2.pitch = 9.8; n2.roll = -4.2; n2.vibration = 0.320;
+      n3.pitch = 10.5; n3.roll = 3.8; n3.vibration = 0.280;
+      break;
+
+    case "blast":
+      n1.vibration = 0.38;
+      n2.vibration = 0.44;
+      n3.vibration = 0.41;
+      break;
+
+    case "normal":
+    default:
+      n1.pitch = 0.12; n1.roll = -0.15; n1.vibration = 0.038;
+      n2.pitch = 0.25; n2.roll = 0.08; n2.vibration = 0.042;
+      n3.pitch = -0.18; n3.roll = 0.31; n3.vibration = 0.035;
+      break;
+  }
+
+  [n1, n2, n3].forEach(n => {
+    n.online = true;
+    n.lastSeen = iso;
+    n.baselinePitch = n.baselinePitch ?? 0;
+    n.baselineRoll = n.baselineRoll ?? 0;
+    n.deltaPitch = Number((n.pitch - n.baselinePitch).toFixed(2));
+    n.deltaRoll = Number((n.roll - n.baselineRoll).toFixed(2));
+    n.deltaTilt = Math.max(Math.abs(n.deltaPitch), Math.abs(n.deltaRoll));
+    
+    if (n.deltaTilt >= 8.0) n.level = 3;
+    else if (n.deltaTilt >= 5.0) n.level = 2;
+    else if (n.deltaTilt >= 2.0) n.level = 1;
+    else n.level = 0;
+
+    state.nodes.set(n.nodeId, n);
+  });
+
+  return status();
+}
 
 export function triggerBlastSuppression(seconds = 60) {
   const time = now();
@@ -63,12 +162,12 @@ export function triggerBlastSuppression(seconds = 60) {
 export function resetSystem() {
   state.events = [];
   state.suppressBlastUntil = 0;
+  state.mode = "simulated";
   
-  // Reset statistical baseline learning counter to 0 so it re-learns live
-  state.baseline.samples = 0;
+  state.baseline.samples = 60;
   state.baseline.meanVib = 0.04;
   state.baseline.m2Vib = 0;
-  state.baseline.ready = false;
+  state.baseline.ready = true;
   
   state.nodes.forEach(node => {
     node.baselinePitch = node.pitch;
@@ -77,11 +176,13 @@ export function resetSystem() {
     node.deltaRoll = 0;
     node.deltaTilt = 0;
     node.level = 0;
+    node.online = true;
+    node.lastSeen = new Date().toISOString();
     node.tiltStartedAt = undefined;
-    node.baselineReady = false;
+    node.baselineReady = true;
   });
 
-  addEvent(0, "SYSTEM RESET: Alarms cleared, baseline zeroed, and 60-sample learning restarted.");
+  addEvent(0, "SYSTEM RESET: Alarms cleared and baseline zeroed.");
   return status();
 }
 
@@ -110,6 +211,7 @@ export function ingest(p: Packet) {
   if (!p.nodeId || !Number.isFinite(p.pitch) || !Number.isFinite(p.roll) || !Number.isFinite(p.vibration)) {
     throw new Error("nodeId, pitch, roll and vibration are required finite numbers");
   }
+  state.mode = "live";
   const time = now();
   const old = state.nodes.get(p.nodeId);
 
@@ -186,13 +288,17 @@ export function status() {
   const isBlastSuppressed = time < state.suppressBlastUntil;
   const blastRemaining = isBlastSuppressed ? Math.max(0, Math.ceil((state.suppressBlastUntil - time) / 1000)) : 0;
 
-  // Update online status: offline if no packet received for >5 seconds
+  // Update online status: in live mode, offline if no packet received for >5 seconds
   nodes.forEach(n => {
     n.id = n.nodeId;
-    const ageMs = time - new Date(n.lastSeen).getTime();
-    n.online = ageMs < 5000;
-    if (!n.online) {
-      n.level = 0;
+    if (state.mode === "live") {
+      const ageMs = time - new Date(n.lastSeen).getTime();
+      n.online = ageMs < 5000;
+      if (!n.online) {
+        n.level = 0;
+      }
+    } else {
+      n.online = true;
     }
   });
 

@@ -12,34 +12,33 @@ Coal India / Ministry of Coal · Hardware · Disaster Management
 | [cad/](cad/) | Parametric 3D CAD enclosure model designed in KCL (Zoo AI / Zoo.dev) with assembly notes and export guides |
 | [ppt/SIH-official-template.pptx](ppt/SIH-official-template.pptx) | Official SIH 6-slide template — paste copy from PLAYBOOK §8, export PDF |
 | [animator/](animator/) | 60s explainer brief, VO, storyboard, look frames — send this folder to the animator |
-| [surakshamesh-dashboard](https://github.com/amitxgit/surakshamesh-dashboard) | Modern Next.js 16 + React 19 real-time hexagonal mesh control dashboard |
+| [app/](app/) | Modern Next.js 15 + React 19 real-time hexagonal mesh control center dashboard |
 
 ---
 
 ## Quick Start — Running the System
 
-### 1. Start the Live Dashboard
+### 1. Start the Live Command Center
 ```powershell
-cd C:\Users\amit0\Desktop\surakshamesh-dashboard
-npm.cmd run dev
+npm run dev
 ```
 Open `http://localhost:3000` in your browser.
 
 ### 2. Connect the Hardware or Simulator
 
-- **Hardware-free Simulator:**
+- **Hardware-free Multi-Node Simulator:**
   ```powershell
-  cd C:\Users\amit0\Desktop\surakshamesh-dashboard
-  npm.cmd run simulate           # Normal baseline learning
-  npm.cmd run simulate:shift     # Single/dual node tilt alert
-  npm.cmd run simulate:collapse  # Multi-node critical subsidence event
+  npm run simulate              # Normal baseline learning
+  npm run simulate:shift        # Coherent subsidence warning
+  npm run simulate:critical     # Severe ground failure alert
+  npm run simulate:interactive  # Interactive keyboard scenario switcher (0-3, b)
   ```
 
 - **Live USB Gateway Bridge (Central ESP32 on COM3):**
   ```powershell
-  cd C:\Users\amit0\Desktop\surakshamesh-dashboard
-  npm.cmd run bridge COM3
+  npm run bridge COM3
   ```
 
 - **Wireless Wi-Fi Hotspot Mode:**
   Set `#define USE_WIFI_HTTP 1` in `firmware/node/node.ino` on `NODE-01` and connect the ESP32 directly to your laptop hotspot.
+

@@ -1,39 +1,47 @@
 /*
- * SurakshaMesh Node Firmware — SIH26025
- * Unified sketch for Central Gateway & Mesh Field Nodes with Active Buzzer.
+ * ================================================================================
+ *                   SURAKSHAMESH NODE FIRMWARE — SIH26025
+ * Unified Sketch for Central Gateway (NODE-01) & Mesh Nodes (NODE-02, NODE-03)
+ * ================================================================================
  *
- * Board Configurations:
- *   NODE_INDEX 1, IS_GATEWAY 1 -> Central Gateway Node (NODE-01) with Active Buzzer & USB/Wi-Fi Telemetry
- *   NODE_INDEX 2, IS_GATEWAY 0 -> Mesh Node 02 (NODE-02) field sensor with Active Buzzer
- *   NODE_INDEX 3, IS_GATEWAY 0 -> Mesh Node 03 (NODE-03) field sensor with Active Buzzer
+ * Board Roles:
+ *   NODE_INDEX 1, IS_GATEWAY 1 -> Central Gateway (NODE-01) with USB Serial / Wi-Fi Telemetry
+ *   NODE_INDEX 2, IS_GATEWAY 0 -> Field Sensor Node (NODE-02) on wooden plank
+ *   NODE_INDEX 3, IS_GATEWAY 0 -> Field Sensor Node (NODE-03) on wooden plank
  *
- * Wiring (Identical for all 3 nodes):
- *   MPU6050:      VCC -> 3V3 | GND -> GND | SDA -> GPIO 21 | SCL -> GPIO 22 | AD0 -> GND
+ * Hardware Wiring (Identical across all 3 nodes):
+ *   MPU6050 IMU:   VCC -> 3V3 | GND -> GND | SDA -> GPIO 21 | SCL -> GPIO 22 | AD0 -> GND
  *   Active Buzzer: Pos(+) -> GPIO 14 | Neg(-) -> GND
- *   Status LED:   Onboard LED (GPIO 2)
- *   TP4056 + Batt:OUT+ -> VIN | OUT- -> GND
+ *   Status LED:    Onboard LED (GPIO 2)
+ *   Power:         TP4056 + 18650 Battery (OUT+ -> VIN, OUT- -> GND) or USB-C
+ *
+ * Libraries Required (Built-in with ESP32 Board Package):
+ *   Wire.h, esp_now.h, WiFi.h, esp_wifi.h, math.h
+ * ================================================================================
  */
 
 #include <Wire.h>
 #include <esp_now.h>
+#include <esp_wifi.h>
 #include <WiFi.h>
 #include <math.h>
 
 // ==================== Node Configuration ====================
-#define NODE_INDEX       1          // 1 for NODE-01 (Gateway), 2 for NODE-02, 3 for NODE-03
+#define NODE_INDEX       1          // 1: NODE-01 (Gateway), 2: NODE-02, 3: NODE-03
 #define IS_GATEWAY       1          // 1 on Central Gateway (NODE-01), 0 on Field Nodes
-#define FLIP_PITCH       0          // Set to 1 if IMU mounted reversed on pitch axis
-#define FLIP_ROLL        0          // Set to 1 if IMU mounted reversed on roll axis
+#define FLIP_PITCH       0          // 1 if IMU is mounted reversed on pitch axis
+#define FLIP_ROLL        0          // 1 if IMU is mounted reversed on roll axis
+#define MESH_CHANNEL     1          // Fixed Wi-Fi channel for 100% reliable ESP-NOW mesh
 
 // Communication Mode for Gateway
-#define USE_WIFI_HTTP    0          // 0 = USB Serial output (for serial-bridge.mjs), 1 = Direct Wi-Fi HTTP POST
+#define USE_WIFI_HTTP    0          // 0 = USB Serial (serial-bridge.mjs), 1 = Direct Wi-Fi HTTP POST
 #define WIFI_SSID        "SurakshaMesh-Hotspot"
 #define WIFI_PASS        "suraksha123"
 #define API_URL          "http://192.168.137.1:3000/api/telemetry"
 
 // Peripherals
 #define USE_ONBOARD_LED  1
-#define USE_BUZZER       1          // Active Buzzer on GPIO 14 (All nodes)
+#define USE_BUZZER       1          // Active Buzzer on GPIO 14
 
 // Pin Definitions
 #define MPU_ADDR         0x68
@@ -42,43 +50,52 @@
 #define PIN_BUZZER       14
 #define PIN_ONBOARD      2
 
-// Sampling and Filter Constants
-#define SAMPLE_HZ        50
-#define SEND_MS          1000
-#define VIB_WINDOW       50
-#define ALPHA            0.98f      // Complementary filter weighting
+// Sampling & Filter Constants
+#define SAMPLE_HZ        50         // 50 Hz loop rate (20ms interval)
+#define SEND_MS          1000       // Broadcast rate: 1 packet per second
+#define VIB_WINDOW       50         // 50-sample rolling RMS window (1.0s)
+#define ALPHA            0.98f      // Complementary filter weight (98% gyro + 2% accel)
 
 #if USE_WIFI_HTTP
 #include <HTTPClient.h>
 #endif
 
-// Packet structure sent over ESP-NOW
+// Packet structure sent over ESP-NOW mesh (17 bytes packed)
 typedef struct __attribute__((packed)) {
-  uint8_t  id;           // 1, 2, 3
-  float    pitch;        // degrees (relative delta)
-  float    roll;         // degrees (relative delta)
-  float    vib;          // g RMS
-  uint32_t t_ms;         // uptime millis
-  uint8_t  risk;         // 0: Normal, 1: Watch, 2: Warning, 3: Critical
+  uint8_t  id;           // Node ID (1, 2, 3)
+  float    pitch;        // Relative delta pitch (degrees)
+  float    roll;         // Relative delta roll (degrees)
+  float    vib;          // Dynamic vibration RMS (g)
+  uint32_t t_ms;         // Node uptime (milliseconds)
+  uint8_t  risk;         // Risk Level: 0=Normal, 1=Watch, 2=Warning, 3=Critical
 } packet_t;
 
-static float pitch_raw = 0, roll_raw = 0;
-static float pitch_zero = 0, roll_zero = 0; // Auto-tared resting position
-static float delta_pitch = 0, delta_roll = 0;
+// Sensor & Filter State
+static bool  mpu_ready = false;
+static bool  first_sample = true;
 static bool  tared = false;
+static float pitch_raw = 0.0f, roll_raw = 0.0f;
+static float pitch_zero = 0.0f, roll_zero = 0.0f; // Auto-tared resting zero
+static float delta_pitch = 0.0f, delta_roll = 0.0f;
 static uint32_t tilt_started_at = 0;
 
-static float vib_rms = 0;
+// Dynamic Vibration State (AC filter eliminates static gravity offset)
+static float mag_dc = 1.0f;
+static float vib_rms = 0.0f;
 static float vib_buf[VIB_WINDOW];
 static int   vib_i = 0;
 static int   vib_n = 0;
+
+// Alarm & Mesh State
 static uint8_t risk = 0;
-static uint8_t max_mesh_risk = 0;   // Highest risk heard on mesh
+static uint8_t max_mesh_risk = 0;
 static uint32_t last_mesh_alert = 0;
 static uint32_t last_send = 0;
 static uint32_t last_sample = 0;
+static uint32_t last_mpu_retry = 0;
 static uint8_t broadcast_mac[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
+// Helpers
 static const char* getNodeName(uint8_t id) {
   if (id == 1) return "NODE-01";
   if (id == 2) return "NODE-02";
@@ -97,7 +114,7 @@ static void update_feedback(uint8_t r) {
   uint8_t effective_risk = r;
 
 #if IS_GATEWAY
-  // On Gateway, sound buzzer only if own sensor OR incoming mesh packets show warning/critical
+  // Gateway sounds alarm if its own sensor OR incoming mesh packets detect danger
   if (millis() - last_mesh_alert < 3000 && max_mesh_risk > effective_risk) {
     effective_risk = max_mesh_risk;
   } else if (millis() - last_mesh_alert >= 3000) {
@@ -119,25 +136,28 @@ static void update_feedback(uint8_t r) {
     bool beep = (now_ms % 400) < 200;
     digitalWrite(PIN_BUZZER, beep ? HIGH : LOW);
   } else if (effective_risk == 3) {
-    // Rapid emergency alarm on >8° severe tilt / collapse (80ms ON / 80ms OFF)
+    // Rapid emergency siren on >8° severe tilt / collapse (80ms ON / 80ms OFF)
     bool alert = (now_ms % 160) < 80;
     digitalWrite(PIN_BUZZER, alert ? HIGH : LOW);
   }
 #endif
 }
 
+// ==================== MPU6050 Driver ====================
 static bool mpu_write(uint8_t reg, uint8_t val) {
   Wire.beginTransmission(MPU_ADDR);
   Wire.write(reg);
   Wire.write(val);
-  return Wire.endTransmission() == 0;
+  return (Wire.endTransmission() == 0);
 }
 
 static bool mpu_begin() {
+  Wire.begin(SDA_PIN, SCL_PIN);
+  Wire.setClock(400000);
   delay(50);
-  if (!mpu_write(0x6B, 0x00)) return false; // Wake up MPU6050
-  mpu_write(0x1B, 0x00);                    // Gyro +-250 dps
-  mpu_write(0x1C, 0x00);                    // Accel +-2 g
+  if (!mpu_write(0x6B, 0x00)) return false; // Wake up from sleep
+  mpu_write(0x1B, 0x00);                    // Gyro range: +-250 dps
+  mpu_write(0x1C, 0x00);                    // Accel range: +-2 g
   return true;
 }
 
@@ -150,7 +170,7 @@ static bool mpu_read(float *ax, float *ay, float *az, float *gx, float *gy, floa
   int16_t rax = (Wire.read() << 8) | Wire.read();
   int16_t ray = (Wire.read() << 8) | Wire.read();
   int16_t raz = (Wire.read() << 8) | Wire.read();
-  Wire.read(); Wire.read(); // Skip temp
+  Wire.read(); Wire.read(); // Skip temp sensor bytes
   int16_t rgx = (Wire.read() << 8) | Wire.read();
   int16_t rgy = (Wire.read() << 8) | Wire.read();
   int16_t rgz = (Wire.read() << 8) | Wire.read();
@@ -164,33 +184,39 @@ static bool mpu_read(float *ax, float *ay, float *az, float *gx, float *gy, floa
   return true;
 }
 
-// Exactly matches website's decision engine thresholds and persistence
+// ==================== Decision Engine ====================
+// Matches the Command Center algorithm:
+// - ΔTilt < 2.0° : Normal (0)
+// - ΔTilt 2.0°–5.0° or high vibration : Watch (1)
+// - ΔTilt > 5.0° sustained for 3.0s : Warning (2)
+// - ΔTilt > 8.0° : Critical Emergency (3)
 static uint8_t classify(float dp, float dr, float v, uint32_t now) {
-  if (!tared) return 0; // Silent while auto-taring
+  if (!tared) return 0; // Remain silent during 1-second startup auto-tare
 
   float delta_tilt = fabsf(dp) > fabsf(dr) ? fabsf(dp) : fabsf(dr);
 
-  // Track persistent deformation (filters out accidental 1-second bumps)
+  // Track deformation persistence to prevent false alarms from brief 1-second bumps
   if (delta_tilt >= 2.0f) {
     if (tilt_started_at == 0) tilt_started_at = now;
   } else if (delta_tilt < 1.5f) {
-    tilt_started_at = 0; // Hysteresis recovery
+    tilt_started_at = 0; // Hysteresis reset
   }
 
   bool is_persistent = (tilt_started_at != 0) && ((now - tilt_started_at) >= 3000);
 
   if (delta_tilt >= 8.0f) {
-    return 3; // Critical immediately on severe >8° tilt
+    return 3; // Critical: Immediate alarm on severe tilt
   }
   if (delta_tilt >= 5.0f && is_persistent) {
-    return 2; // Warning ONLY if >5° tilt is held steady for 3 seconds
+    return 2; // Warning: 5° tilt held for >3 seconds
   }
-  if (delta_tilt >= 2.0f || v >= 0.25f) {
-    return 1; // Watch on minor movements (Buzzer stays SILENT)
+  if (delta_tilt >= 2.0f || v >= 0.20f) {
+    return 1; // Watch: Minor tilt/vibration (Buzzer stays SILENT)
   }
-  return 0;   // Normal (Buzzer stays SILENT)
+  return 0;   // Normal: Ground is stable (Buzzer stays SILENT)
 }
 
+// ==================== Telemetry Emission ====================
 static void emit_json(const packet_t *p) {
   Serial.print("{\"nodeId\":\"");
   Serial.print(getNodeName(p->id));
@@ -221,7 +247,7 @@ static void post_http_packet(const packet_t *p) {
     "{\"packets\":[{\"nodeId\":\"%s\",\"role\":\"%s\",\"pitch\":%.2f,\"roll\":%.2f,\"vibration\":%.4f}]}",
     getNodeName(p->id), getNodeRole(p->id), p->pitch, p->roll, p->vib);
 
-  int httpCode = http.POST((uint8_t*)jsonBuf, strlen(jsonBuf));
+  http.POST((uint8_t*)jsonBuf, strlen(jsonBuf));
   http.end();
 }
 #endif
@@ -230,6 +256,7 @@ static void send_esp_now(const packet_t *p) {
   esp_now_send(broadcast_mac, (const uint8_t *)p, sizeof(*p));
 }
 
+// ==================== ESP-NOW Receiver Callback ====================
 #if IS_GATEWAY
 #if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
 void on_rx(const esp_now_recv_info_t *info, const uint8_t *data, int len) {
@@ -241,72 +268,95 @@ void on_rx(const uint8_t *mac, const uint8_t *data, int len) {
   if (len < (int)sizeof(packet_t)) return;
   packet_t p;
   memcpy(&p, data, sizeof(p));
-  
-  // Track mesh alert for gateway buzzer
+
+  // If incoming mesh packet reports warning or critical, update gateway buzzer
   if (p.risk >= 2) {
     max_mesh_risk = p.risk;
     last_mesh_alert = millis();
   }
-  
+
+  // Output to USB serial for Next.js dashboard
   emit_json(&p);
+
 #if USE_WIFI_HTTP
   post_http_packet(&p);
 #endif
 }
 #endif
 
+// ==================== Setup ====================
 void setup() {
   Serial.begin(115200);
   delay(200);
 
 #if USE_ONBOARD_LED
   pinMode(PIN_ONBOARD, OUTPUT);
-  digitalWrite(PIN_ONBOARD, LOW);
+  digitalWrite(PIN_ONBOARD, HIGH); // Light LED during boot
 #endif
 
 #if USE_BUZZER
   pinMode(PIN_BUZZER, OUTPUT);
+  // Short 100ms confirmation chirp on startup
+  digitalWrite(PIN_BUZZER, HIGH);
+  delay(100);
   digitalWrite(PIN_BUZZER, LOW);
 #endif
 
-  Wire.begin(SDA_PIN, SCL_PIN);
-  Wire.setClock(400000);
-  if (!mpu_begin()) {
-    Serial.println("{\"err\":\"mpu6050_not_found\"}");
+#if USE_ONBOARD_LED
+  digitalWrite(PIN_ONBOARD, LOW);
+#endif
+
+  // Initialize MPU6050
+  mpu_ready = mpu_begin();
+  if (!mpu_ready) {
+    Serial.println("{\"err\":\"mpu6050_not_found\",\"msg\":\"Check I2C wiring (SDA=21, SCL=22)\"}");
   }
 
+  // Setup Wi-Fi and Radio Channel
 #if USE_WIFI_HTTP && IS_GATEWAY
   WiFi.mode(WIFI_AP_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASS);
 #else
   WiFi.mode(WIFI_STA);
+  WiFi.disconnect();
+  esp_wifi_set_channel(MESH_CHANNEL, WIFI_SECOND_CHAN_NONE);
 #endif
 
-  if (esp_now_init() != ESP_OK) {
-    Serial.println("{\"err\":\"espnow_init_failed\"}");
-  }
-
-  esp_now_peer_info_t peer = {};
-  memcpy(peer.peer_addr, broadcast_mac, 6);
-  peer.channel = 0;
-  peer.encrypt = false;
-  esp_now_add_peer(&peer);
+  // Initialize ESP-NOW
+  if (esp_now_init() == ESP_OK) {
+    esp_now_peer_info_t peer = {};
+    memcpy(peer.peer_addr, broadcast_mac, 6);
+    peer.channel = 0; // Send on current Wi-Fi channel
+    peer.encrypt = false;
+    esp_now_add_peer(&peer);
 
 #if IS_GATEWAY
-  esp_now_register_recv_cb(on_rx);
+#if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
+    esp_now_register_recv_cb(on_rx);
+#else
+    esp_now_register_recv_cb((esp_now_recv_cb_t)on_rx);
 #endif
+#endif
+  } else {
+    Serial.println("{\"err\":\"espnow_init_failed\"}");
+  }
 
   last_sample = micros();
   Serial.print("{\"boot\":1,\"nodeId\":\"");
   Serial.print(getNodeName(NODE_INDEX));
+  Serial.print("\",\"role\":\"");
+  Serial.print(getNodeRole(NODE_INDEX));
   Serial.print("\",\"isGateway\":");
   Serial.print(IS_GATEWAY);
   Serial.println("}");
 }
 
+// ==================== Main Loop (50 Hz) ====================
 void loop() {
   uint32_t now_us = micros();
   uint32_t dt_us = now_us - last_sample;
+
+  // Enforce 50 Hz loop rate (20,000 µs interval)
   if (dt_us < (1000000UL / SAMPLE_HZ)) {
     update_feedback(risk);
     return;
@@ -315,54 +365,84 @@ void loop() {
   float dt = dt_us / 1000000.0f;
   if (dt > 0.1f) dt = 0.02f;
 
-  float ax, ay, az, gx, gy, gz;
-  if (!mpu_read(&ax, &ay, &az, &gx, &gy, &gz)) {
-    update_feedback(risk);
-    return;
-  }
+  uint32_t now = millis();
 
-  float acc_pitch = atan2f(-ax, sqrtf(ay * ay + az * az)) * 57.2957795f;
-  float acc_roll  = atan2f(ay, az) * 57.2957795f;
-  pitch_raw = ALPHA * (pitch_raw + gy * dt) + (1.0f - ALPHA) * acc_pitch;
-  roll_raw  = ALPHA * (roll_raw  + gx * dt) + (1.0f - ALPHA) * acc_roll;
-
-#if FLIP_PITCH
-  pitch_raw = -pitch_raw;
-#endif
-#if FLIP_ROLL
-  roll_raw = -roll_raw;
-#endif
-
-  // Auto-tare baseline zero offset during initial 1.5 seconds after power-on
-  static uint32_t tare_samples = 0;
-  static float sum_p = 0, sum_r = 0;
-  if (!tared) {
-    sum_p += pitch_raw;
-    sum_r += roll_raw;
-    tare_samples++;
-    if (tare_samples >= 50) {
-      pitch_zero = sum_p / 50.0f;
-      roll_zero  = sum_r / 50.0f;
-      tared = true;
+  // Retry MPU initialization every 5s if disconnected at boot
+  if (!mpu_ready) {
+    if (now - last_mpu_retry >= 5000) {
+      last_mpu_retry = now;
+      mpu_ready = mpu_begin();
     }
   }
 
-  delta_pitch = pitch_raw - pitch_zero;
-  delta_roll  = roll_raw - roll_zero;
+  // If MPU is ready, read and process sensor data
+  if (mpu_ready) {
+    float ax, ay, az, gx, gy, gz;
+    if (mpu_read(&ax, &ay, &az, &gx, &gy, &gz)) {
+      // Calculate gravity tilt angles
+      float acc_pitch = atan2f(-ax, sqrtf(ay * ay + az * az)) * 57.2957795f;
+      float acc_roll  = atan2f(ay, az) * 57.2957795f;
 
-  float mag = sqrtf(ax * ax + ay * ay + az * az);
-  float ac = mag - 1.0f;
-  vib_buf[vib_i] = ac * ac;
-  vib_i = (vib_i + 1) % VIB_WINDOW;
-  if (vib_n < VIB_WINDOW) vib_n++;
-  float ss = 0;
-  for (int i = 0; i < vib_n; i++) ss += vib_buf[i];
-  vib_rms = sqrtf(ss / vib_n);
+      // Seed initial angles on first sample to avoid startup filter ramp lag
+      if (first_sample) {
+        pitch_raw = acc_pitch;
+        roll_raw  = acc_roll;
+        mag_dc = sqrtf(ax * ax + ay * ay + az * az);
+        first_sample = false;
+      } else {
+        // Complementary Filter: 98% Gyro integration + 2% Accelerometer gravity
+        pitch_raw = ALPHA * (pitch_raw + gy * dt) + (1.0f - ALPHA) * acc_pitch;
+        roll_raw  = ALPHA * (roll_raw  + gx * dt) + (1.0f - ALPHA) * acc_roll;
+      }
 
-  uint32_t now = millis();
-  risk = classify(delta_pitch, delta_roll, vib_rms, now);
+#if FLIP_PITCH
+      pitch_raw = -pitch_raw;
+#endif
+#if FLIP_ROLL
+      roll_raw = -roll_raw;
+#endif
+
+      // Auto-tare resting baseline during first 40 stable samples (approx. 0.8s)
+      static uint32_t tare_samples = 0;
+      static float sum_p = 0.0f, sum_r = 0.0f;
+      if (!tared) {
+        sum_p += pitch_raw;
+        sum_r += roll_raw;
+        tare_samples++;
+        if (tare_samples >= 40) {
+          pitch_zero = sum_p / 40.0f;
+          roll_zero  = sum_r / 40.0f;
+          tared = true;
+        }
+      }
+
+      // Calculate relative deviation from calibrated ground zero
+      delta_pitch = pitch_raw - pitch_zero;
+      delta_roll  = roll_raw - roll_zero;
+
+      // Dynamic Vibration RMS (Filtered for pure AC vibration, ignoring static gravity)
+      float mag = sqrtf(ax * ax + ay * ay + az * az);
+      mag_dc = 0.995f * mag_dc + 0.005f * mag; // Slow DC gravity tracker
+      float ac = mag - mag_dc;
+
+      vib_buf[vib_i] = ac * ac;
+      vib_i = (vib_i + 1) % VIB_WINDOW;
+      if (vib_n < VIB_WINDOW) vib_n++;
+      float ss = 0.0f;
+      for (int i = 0; i < vib_n; i++) ss += vib_buf[i];
+      vib_rms = sqrtf(ss / vib_n);
+
+      // Classify subsidence risk
+      risk = classify(delta_pitch, delta_roll, vib_rms, now);
+    } else {
+      mpu_ready = false; // I2C communication dropped
+    }
+  }
+
+  // Update physical Buzzer & LED
   update_feedback(risk);
 
+  // Broadcast telemetry once per second
   if (now - last_send < SEND_MS) return;
   last_send = now;
 
@@ -374,10 +454,10 @@ void loop() {
   p.t_ms = now;
   p.risk = risk;
 
-  // Broadcast packet to gateway
+  // Broadcast packet to Gateway over ESP-NOW mesh
   send_esp_now(&p);
 
-  // If central gateway, emit own reading locally
+  // If Gateway, emit own reading locally to USB Serial / HTTP
 #if IS_GATEWAY
   emit_json(&p);
 #if USE_WIFI_HTTP

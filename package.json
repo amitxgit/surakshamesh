@@ -6,7 +6,16 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "bridge": "node tools/serial-bridge.mjs",
+    "simulate": "node tools/simulate.mjs normal",
+    "simulate:watch": "node tools/simulate.mjs watch",
+    "simulate:warning": "node tools/simulate.mjs warning",
+    "simulate:shift": "node tools/simulate.mjs warning",
+    "simulate:critical": "node tools/simulate.mjs critical",
+    "simulate:collapse": "node tools/simulate.mjs critical",
+    "simulate:interactive": "node tools/simulate.mjs interactive",
+    "test:backend": "python tools/test_backend.py"
   },
   "dependencies": {
     "next": "^15.1.0",

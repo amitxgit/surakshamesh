@@ -6,14 +6,17 @@
 
 ---
 
-## 1. Repositories & Local Directories
+## 1. Unified Repository Architecture
 
-| Repository / Directory | Path | Git Branch & Status |
+| Component | Path | Description |
 |---|---|---|
-| **Core Firmware, CAD, PPT & Playbook** | `c:\SurakshaMesh` | `origin/main` (clean, up-to-date) |
-| **Next.js Modern Hex Dashboard** | `C:\Users\amit0\Desktop\surakshamesh-dashboard` | `origin/master` (clean, up-to-date) |
-| **GitHub Remote 1** | `https://github.com/amitxgit/surakshamesh` | Merged PR `#1` |
-| **GitHub Remote 2** | `https://github.com/amitxgit/surakshamesh-dashboard` | Direct commits pushed |
+| **Unified Workspace Root** | `c:\SurakshaMesh` | Official Monorepo (`origin/main`) |
+| **Next.js Command Center** | `app/`, `lib/`, `package.json` | Next.js 15 + React 19 real-time digital twin & telemetry UI |
+| **ESP32 Firmware** | `firmware/node/node.ino` | Central Gateway & Mesh Node firmware with ESP-NOW & Active Buzzer |
+| **CAD Enclosure** | `cad/surakshaMesh/` | KittyCAD (KCL) parametric assembly models |
+| **PPT Automation** | `ppt/`, `tools/build_ppt.py` | Official SIH presentation generator |
+| **Telemetry Tools** | `tools/` | Serial bridge, multi-node simulator, backend tests |
+| **GitHub Remote** | `https://github.com/amitxgit/surakshamesh` | Merged and up-to-date |
 
 ---
 
@@ -26,34 +29,34 @@
 
 ### Pinout (Common for All 3 Nodes)
 - **MPU6050 IMU:** `VCC -> 3V3` | `GND -> GND` | `SDA -> GPIO 21` | `SCL -> GPIO 22` | `AD0 -> GND` (Address `0x68`)
-- **RGB Status LED:** `R -> GPIO 25 (220Ω)` | `G -> GPIO 26 (220Ω)` | `B -> GPIO 27 (220Ω)` | `Cathode -> GND`
+- **Active Buzzer:** `Pos(+) -> GPIO 14` | `Neg(-) -> GND`
+- **Status LED:** Onboard LED (GPIO 2)
 - **Firmware Location:** [`firmware/node/node.ino`](file:///c:/SurakshaMesh/firmware/node/node.ino)
 
 ---
 
 ## 3. How to Run the Dashboard & Tools
 
-### Start Web Dashboard
+### Start Web Command Center
 ```powershell
-cd C:\Users\amit0\Desktop\surakshamesh-dashboard
-npm.cmd run dev
+npm run dev
 ```
 Open **`http://localhost:3000`** in browser.
 
 ### Option A: Run Live Hardware Bridge (USB Mode)
 Connect `NODE-01` to laptop via USB cable, then start the bridge:
 ```powershell
-cd C:\Users\amit0\Desktop\surakshamesh-dashboard
-npm.cmd run bridge COM3
+npm run bridge COM3
 ```
 
 ### Option B: Run Software Simulator (No Hardware Needed)
 ```powershell
-cd C:\Users\amit0\Desktop\surakshamesh-dashboard
-npm.cmd run simulate           # Baseline calibration
-npm.cmd run simulate:shift     # Single/dual node Warning
-npm.cmd run simulate:collapse  # Multi-node critical subsidence event
+npm run simulate              # Normal baseline learning
+npm run simulate:shift        # Coherent subsidence Warning
+npm run simulate:critical     # Multi-node critical subsidence event
+npm run simulate:interactive  # Interactive live scenario switcher (0-3, b)
 ```
+
 
 ---
 
