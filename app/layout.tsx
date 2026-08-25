@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "SurakshaMesh — AI Real-Time Mine Subsidence Early Warning System",
+  title: "SurakshaMesh - AI Real-Time Mine Subsidence Early Warning System",
   description: "SIH26025: Low-cost wireless surface mesh telemetry and AI early warning digital twin for underground coal mines in India.",
 };
 

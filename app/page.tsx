@@ -35,7 +35,9 @@ export default function Dashboard() {
 
   const refresh = async () => {
     try {
-      const next: Status = await fetch("/api/status", { cache: "no-store" }).then(res => res.json());
+      const res = await fetch("/api/status");
+      if (!res.ok) return;
+      const next: Status = await res.json();
       setStatus(next);
       setSelectedId(curr => curr ?? next.nodes[0]?.nodeId ?? next.nodes[0]?.id ?? null);
 
