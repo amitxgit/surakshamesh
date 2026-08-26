@@ -3,9 +3,9 @@
 > **Real-Time Wireless Surface Sensor Mesh for Underground Mine Subsidence Monitoring & Early Warning**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Hardware](https://img.shields.io/badge/Hardware-ESP32%20%7C%20MPU6050-orange.svg)]()
-[![Firmware](https://img.shields.io/badge/Firmware-C%2B%2B%20%2F%20Arduino-00979D.svg)]()
-[![Dashboard](https://img.shields.io/badge/Dashboard-Python%20%2F%20Flask%20%7C%20Next.js-blueviolet.svg)]()
+[![Hardware](https://img.shields.io/badge/Hardware-ESP32%20%7C%20MPU6050-orange.svg)](#-hardware-requirements--pinout)
+[![Firmware](https://img.shields.io/badge/Firmware-C%2B%2B%20%2F%20Arduino-00979D.svg)](firmware/)
+[![Dashboard](https://img.shields.io/badge/Dashboard-Python%20%2F%20Flask%20%7C%20Next.js-blueviolet.svg)](dashboard/)
 
 ---
 
