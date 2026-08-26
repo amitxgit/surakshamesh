@@ -13,8 +13,9 @@
 
 **SurakshaMesh** is a low-cost, dense wireless surface sensor mesh designed for deployment above underground mining galleries and bord-and-pillar panels. It provides continuous, real-time detection of ground tilt, surface deformation, and vibration anomalies—delivering proactive early warnings before traditional periodic walk-around surveys detect surface cracking or structural damage.
 
-![SurakshaMesh Overview](docs/images/mesh_overview.jpg)
-*Figure 1: SurakshaMesh surface deployment model for continuous deformation tracking.*
+(<img width="1428" height="649" alt="image" src="https://github.com/user-attachments/assets/e417e271-d45f-447a-87dd-38c01487491a" />
+)
+*Figure 1: SurakshaMesh surface deployment nodes for continuous deformation tracking.*
 
 ---
 
