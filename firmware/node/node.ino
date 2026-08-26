@@ -1,5 +1,5 @@
 /*
- * SurakshaMesh Node Firmware — SIH26025
+ * SurakshaMesh Node Firmware
  * Unified sketch for Central Gateway & Mesh Field Nodes with Active Buzzer.
  *
  * Board Configurations:

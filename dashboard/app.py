@@ -1,8 +1,8 @@
 """
-SurakshaMesh dashboard — SIH26025
+SurakshaMesh Telemetry Dashboard
 Usage:  python app.py COM6
         python app.py /dev/ttyUSB0
-        python app.py --demo          # no hardware: press 1/2 to fake tilt
+        python app.py --demo          # Simulation mode without hardware
 Browser: http://127.0.0.1:5000
 """
 from __future__ import annotations
