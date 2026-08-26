@@ -66,13 +66,13 @@
 
 | Node Hardware & Sensor Rig | Internal Cutaway & Assembly |
 | :---: | :---: |
-| ![Hardware Node](docs/images/node_hardware.jpg) | ![Node Cutaway](<img width="772" height="547" alt="WhatsApp Image 2026-08-25 at 03 31 45" src="https://github.com/user-attachments/assets/5daf1990-acf3-45a4-95ca-4e423d2cccd9" />
+| ![Hardware Node](docs/images/node_hardware.jpg) | (<img width="772" height="547" alt="WhatsApp Image 2026-08-25 at 03 31 45" src="https://github.com/user-attachments/assets/5daf1990-acf3-45a4-95ca-4e423d2cccd9" />
 ) |
 | *ESP32 + MPU6050 station with local visual feedback* | *Internal battery, sensor cradle, and electronics placement* |
 
 | Parametric CAD Exploded Assembly | Spatial Telemetry Map |
 | :---: | :---: |
-| ![CAD Model](docs/images/cad_exploded.jpg) | ![Dashboard Map](<img width="1600" height="914" alt="WhatsApp Image 2026-08-24 at 05 21 19" src="https://github.com/user-attachments/assets/e4094ec3-7ee2-462f-b473-c2af403e85c3" />
+| ![CAD Model](docs/images/cad_exploded.jpg) | (<img width="1600" height="914" alt="WhatsApp Image 2026-08-24 at 05 21 19" src="https://github.com/user-attachments/assets/e4094ec3-7ee2-462f-b473-c2af403e85c3" />
 ) |
 | *Parametric 3D enclosure model designed in KCL* | *Spatial risk grid and continuous monitoring map* |
 
