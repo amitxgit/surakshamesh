@@ -28,6 +28,11 @@ function normalizePacket(raw) {
   const roll = Number(raw.roll ?? 0);
   const vibration = Number(raw.vibration ?? raw.vib ?? 0);
   const timestamp = raw.timestamp ?? new Date().toISOString();
+  const seq = raw.seq !== undefined ? Number(raw.seq) : undefined;
+  const stalta = raw.stalta !== undefined ? Number(raw.stalta) : undefined;
+  const temp = (raw.temp ?? raw.temp_c) !== undefined ? Number(raw.temp ?? raw.temp_c) : undefined;
+  const evt = (raw.evt ?? raw.event_type) !== undefined ? Number(raw.evt ?? raw.event_type) : undefined;
+  const risk = raw.risk !== undefined ? Number(raw.risk) : undefined;
 
   return {
     nodeId,
@@ -35,7 +40,12 @@ function normalizePacket(raw) {
     pitch,
     roll,
     vibration,
-    timestamp
+    timestamp,
+    ...(seq !== undefined ? { seq } : {}),
+    ...(stalta !== undefined ? { stalta } : {}),
+    ...(temp !== undefined ? { temp } : {}),
+    ...(evt !== undefined ? { evt } : {}),
+    ...(risk !== undefined ? { risk } : {})
   };
 }
 
@@ -49,7 +59,7 @@ async function forwardTelemetry(packets) {
     if (!res.ok) {
       console.warn(`[API WARN] ${res.status}: ${res.statusText}`);
     } else {
-      const summary = packets.map(p => `${p.nodeId}(P:${p.pitch}° R:${p.roll}° V:${p.vibration.toFixed(4)}g)`).join(", ");
+      const summary = packets.map(p => `${p.nodeId}(P:${p.pitch}° R:${p.roll}° V:${p.vibration.toFixed(4)}g${p.stalta !== undefined ? ` S:${p.stalta.toFixed(1)}` : ""}${p.temp !== undefined ? ` ${p.temp.toFixed(1)}°C` : ""})`).join(", ");
       console.log(`[✓] Forwarded: ${summary}`);
     }
   } catch (err) {

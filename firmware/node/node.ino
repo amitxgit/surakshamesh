@@ -60,14 +60,18 @@
 #include <HTTPClient.h>
 #endif
 
-// Packet structure sent over ESP-NOW mesh (17 bytes packed)
+// Packet structure sent over ESP-NOW mesh (29 bytes packed)
 typedef struct __attribute__((packed)) {
   uint8_t  id;           // Node ID (1, 2, 3)
+  uint16_t seq;          // Packet sequence counter (wraps at 65535)
   float    pitch;        // Relative delta pitch (degrees)
   float    roll;         // Relative delta roll (degrees)
   float    vib;          // Dynamic vibration RMS (g)
+  float    stalta;       // Current STA/LTA ratio
+  float    temp_c;       // Internal MPU6050 temperature (Celsius)
   uint32_t t_ms;         // Node uptime (milliseconds)
   uint8_t  risk;         // Risk Level: 0=Normal, 1=Watch, 2=Warning, 3=Critical
+  uint8_t  event_type;   // Event Classification: 0=None, 1=Pending, 2=Subsidence, 3=Blast
 } packet_t;
 
 // Sensor & Filter State
@@ -85,6 +89,34 @@ static float vib_rms = 0.0f;
 static float vib_buf[VIB_WINDOW];
 static int   vib_i = 0;
 static int   vib_n = 0;
+
+// STA/LTA Event Detector & Blast Classifier (Allen 1978, Earle & Shearer 1994)
+#define STA_SAMPLES        25        // 0.5 s at 50 Hz
+#define LTA_SAMPLES        1500      // 30.0 s at 50 Hz
+#define STALTA_THRESH      4.0f      // Event trigger ratio
+
+static float   sta_buf[STA_SAMPLES];
+static float   lta_buf[LTA_SAMPLES];
+static int     sta_i   = 0;
+static int     lta_i   = 0;
+static float   sta_sum = 0.0f;
+static float   lta_sum = 0.0f;
+static float   stalta_ratio = 0.0f;
+
+// Event State Machine (Blast vs. Ground Subsidence)
+#define EVT_TILT_DELTA_DEG 0.5f      // Minimum tilt shift to confirm subsidence (degrees)
+#define EVT_CHECK_MS       30000UL   // 30s observation window before classifying
+#define EVT_RESET_MS       90000UL   // 90s reset window after classification
+
+typedef enum { EVT_NONE = 0, EVT_PENDING = 1, EVT_SUBSIDENCE = 2, EVT_BLAST = 3 } evt_t;
+
+static evt_t    evt_state          = EVT_NONE;
+static uint32_t evt_time           = 0;
+static float    evt_pitch_snapshot = 0.0f;
+static float    evt_roll_snapshot  = 0.0f;
+static uint8_t  event_type         = 0;
+static uint16_t seq_counter        = 0;
+static float    node_temp_c        = 25.0f;
 
 // Alarm & Mesh State
 static uint8_t risk = 0;
@@ -161,7 +193,7 @@ static bool mpu_begin() {
   return true;
 }
 
-static bool mpu_read(float *ax, float *ay, float *az, float *gx, float *gy, float *gz) {
+static bool mpu_read(float *ax, float *ay, float *az, float *gx, float *gy, float *gz, float *temp) {
   Wire.beginTransmission(MPU_ADDR);
   Wire.write(0x3B);
   if (Wire.endTransmission(false) != 0) return false;
@@ -170,7 +202,7 @@ static bool mpu_read(float *ax, float *ay, float *az, float *gx, float *gy, floa
   int16_t rax = (Wire.read() << 8) | Wire.read();
   int16_t ray = (Wire.read() << 8) | Wire.read();
   int16_t raz = (Wire.read() << 8) | Wire.read();
-  Wire.read(); Wire.read(); // Skip temp sensor bytes
+  int16_t rtemp = (Wire.read() << 8) | Wire.read();
   int16_t rgx = (Wire.read() << 8) | Wire.read();
   int16_t rgy = (Wire.read() << 8) | Wire.read();
   int16_t rgz = (Wire.read() << 8) | Wire.read();
@@ -178,6 +210,7 @@ static bool mpu_read(float *ax, float *ay, float *az, float *gx, float *gy, floa
   *ax = rax / 16384.0f;
   *ay = ray / 16384.0f;
   *az = raz / 16384.0f;
+  if (temp) *temp = (rtemp / 340.0f) + 36.53f; // MPU6050 internal thermometer formula
   *gx = rgx / 131.0f;
   *gy = rgy / 131.0f;
   *gz = rgz / 131.0f;
@@ -187,7 +220,7 @@ static bool mpu_read(float *ax, float *ay, float *az, float *gx, float *gy, floa
 // ==================== Decision Engine ====================
 // Matches the Command Center algorithm:
 // - ΔTilt < 2.0° : Normal (0)
-// - ΔTilt 2.0°–5.0° or high vibration : Watch (1)
+// - ΔTilt 2.0°–5.0° or vibration >= 0.15g : Watch (1)
 // - ΔTilt > 5.0° sustained for 3.0s : Warning (2)
 // - ΔTilt > 8.0° : Critical Emergency (3)
 static uint8_t classify(float dp, float dr, float v, uint32_t now) {
@@ -210,7 +243,7 @@ static uint8_t classify(float dp, float dr, float v, uint32_t now) {
   if (delta_tilt >= 5.0f && is_persistent) {
     return 2; // Warning: 5° tilt held for >3 seconds
   }
-  if (delta_tilt >= 2.0f || v >= 0.20f) {
+  if (delta_tilt >= 2.0f || v >= 0.15f) {
     return 1; // Watch: Minor tilt/vibration (Buzzer stays SILENT)
   }
   return 0;   // Normal: Ground is stable (Buzzer stays SILENT)
@@ -222,16 +255,24 @@ static void emit_json(const packet_t *p) {
   Serial.print(getNodeName(p->id));
   Serial.print("\",\"role\":\"");
   Serial.print(getNodeRole(p->id));
-  Serial.print("\",\"pitch\":");
+  Serial.print("\",\"seq\":");
+  Serial.print(p->seq);
+  Serial.print(",\"pitch\":");
   Serial.print(p->pitch, 2);
   Serial.print(",\"roll\":");
   Serial.print(p->roll, 2);
   Serial.print(",\"vibration\":");
   Serial.print(p->vib, 4);
+  Serial.print(",\"stalta\":");
+  Serial.print(p->stalta, 2);
+  Serial.print(",\"temp\":");
+  Serial.print(p->temp_c, 1);
   Serial.print(",\"t\":");
   Serial.print(p->t_ms);
   Serial.print(",\"risk\":");
   Serial.print(p->risk);
+  Serial.print(",\"evt\":");
+  Serial.print(p->event_type);
   Serial.println("}");
 }
 
@@ -242,10 +283,10 @@ static void post_http_packet(const packet_t *p) {
   http.begin(API_URL);
   http.addHeader("Content-Type", "application/json");
 
-  char jsonBuf[256];
+  char jsonBuf[320];
   snprintf(jsonBuf, sizeof(jsonBuf),
-    "{\"packets\":[{\"nodeId\":\"%s\",\"role\":\"%s\",\"pitch\":%.2f,\"roll\":%.2f,\"vibration\":%.4f}]}",
-    getNodeName(p->id), getNodeRole(p->id), p->pitch, p->roll, p->vib);
+    "{\"packets\":[{\"nodeId\":\"%s\",\"role\":\"%s\",\"seq\":%u,\"pitch\":%.2f,\"roll\":%.2f,\"vibration\":%.4f,\"stalta\":%.2f,\"temp\":%.1f,\"risk\":%u,\"evt\":%u}]}",
+    getNodeName(p->id), getNodeRole(p->id), p->seq, p->pitch, p->roll, p->vib, p->stalta, p->temp_c, p->risk, p->event_type);
 
   http.POST((uint8_t*)jsonBuf, strlen(jsonBuf));
   http.end();
@@ -378,7 +419,7 @@ void loop() {
   // If MPU is ready, read and process sensor data
   if (mpu_ready) {
     float ax, ay, az, gx, gy, gz;
-    if (mpu_read(&ax, &ay, &az, &gx, &gy, &gz)) {
+    if (mpu_read(&ax, &ay, &az, &gx, &gy, &gz, &node_temp_c)) {
       // Calculate gravity tilt angles
       float acc_pitch = atan2f(-ax, sqrtf(ay * ay + az * az)) * 57.2957795f;
       float acc_roll  = atan2f(ay, az) * 57.2957795f;
@@ -432,6 +473,53 @@ void loop() {
       for (int i = 0; i < vib_n; i++) ss += vib_buf[i];
       vib_rms = sqrtf(ss / vib_n);
 
+      // ---- STA/LTA Event Detector (Allen 1978, Earle & Shearer 1994) ----
+      float ac_abs = fabsf(ac);
+
+      // Short-Term Average (STA: 0.5s window at 50 Hz = 25 samples)
+      sta_sum -= sta_buf[sta_i];
+      sta_buf[sta_i] = ac_abs;
+      sta_sum += ac_abs;
+      sta_i = (sta_i + 1) % STA_SAMPLES;
+
+      // Long-Term Average (LTA: 30.0s window at 50 Hz = 1500 samples)
+      lta_sum -= lta_buf[lta_i];
+      lta_buf[lta_i] = ac_abs;
+      lta_sum += ac_abs;
+      lta_i = (lta_i + 1) % LTA_SAMPLES;
+
+      float sta_mean = sta_sum / (float)STA_SAMPLES;
+      float lta_mean = lta_sum / (float)LTA_SAMPLES;
+      stalta_ratio   = (lta_mean > 0.001f) ? (sta_mean / lta_mean) : 0.0f;
+      bool event_now = (stalta_ratio > STALTA_THRESH);
+
+      // ---- Event Classification State Machine (Blast vs. Ground Subsidence) ----
+      if (event_now && evt_state == EVT_NONE) {
+        evt_state          = EVT_PENDING;
+        evt_time           = now;
+        evt_pitch_snapshot = delta_pitch;
+        evt_roll_snapshot  = delta_roll;
+        event_type         = 1; // Pending
+      }
+
+      if (evt_state == EVT_PENDING && (now - evt_time) >= EVT_CHECK_MS) {
+        float dp = fabsf(delta_pitch - evt_pitch_snapshot);
+        float dr = fabsf(delta_roll  - evt_roll_snapshot);
+        if (dp > EVT_TILT_DELTA_DEG || dr > EVT_TILT_DELTA_DEG) {
+          evt_state  = EVT_SUBSIDENCE;
+          event_type = 2; // Permanent tilt offset -> Subsidence event
+        } else {
+          evt_state  = EVT_BLAST;
+          event_type = 3; // No permanent tilt offset -> Transient blast vibration
+        }
+      }
+
+      // Reset after 90s cooldown to re-arm detector
+      if ((evt_state == EVT_SUBSIDENCE || evt_state == EVT_BLAST) && (now - evt_time) >= EVT_RESET_MS) {
+        evt_state  = EVT_NONE;
+        event_type = 0;
+      }
+
       // Classify subsidence risk
       risk = classify(delta_pitch, delta_roll, vib_rms, now);
     } else {
@@ -448,11 +536,15 @@ void loop() {
 
   packet_t p;
   p.id = NODE_INDEX;
+  p.seq = seq_counter++;
   p.pitch = delta_pitch;
   p.roll = delta_roll;
   p.vib = vib_rms;
+  p.stalta = stalta_ratio;
+  p.temp_c = node_temp_c;
   p.t_ms = now;
   p.risk = risk;
+  p.event_type = event_type;
 
   // Broadcast packet to Gateway over ESP-NOW mesh
   send_esp_now(&p);

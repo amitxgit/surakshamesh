@@ -5,6 +5,12 @@ export type Packet = {
   roll: number;
   vibration: number;
   timestamp?: string;
+  seq?: number;
+  stalta?: number;
+  temp?: number;
+  evt?: number;
+  eventType?: number;
+  risk?: number;
 };
 
 export type Node = Packet & {
@@ -20,6 +26,12 @@ export type Node = Packet & {
   deltaPitch: number;
   deltaRoll: number;
   deltaTilt: number;
+  tiltRate: number;       // Linear deformation rate (°/min)
+  anomalyScore: number;   // Composite Welford z-score outlier index
+  stalta: number;         // Current STA/LTA seismic ratio
+  temp: number;           // Internal sensor temperature (°C)
+  eventType: number;      // 0=None, 1=Pending, 2=Subsidence, 3=Blast
+  seq: number;            // Monotonic packet sequence counter
 };
 
 type State = {
@@ -30,12 +42,45 @@ type State = {
   mode: "live" | "simulated";
 };
 
+// Rolling tilt history for deformation rate calculation (last 30s per node)
+const tiltHistory = new Map<string, { time: number; tilt: number }[]>();
+
+function computeTiltRate(nodeId: string, time: number, currentTilt: number): number {
+  let hist = tiltHistory.get(nodeId);
+  if (!hist) {
+    hist = [];
+    tiltHistory.set(nodeId, hist);
+  }
+  hist.push({ time, tilt: currentTilt });
+  while (hist.length > 0 && time - hist[0].time > 30000) {
+    hist.shift();
+  }
+  if (hist.length < 2) return 0;
+  const oldest = hist[0];
+  const dtSec = (time - oldest.time) / 1000;
+  if (dtSec < 1.0) return 0;
+  const dTilt = currentTilt - oldest.tilt;
+  const rateDegPerMin = (dTilt / dtSec) * 60;
+  return Number(Math.max(0, rateDegPerMin).toFixed(2));
+}
+
+function computeAnomalyScore(vibration: number, deltaTilt: number, stalta: number): number {
+  const b = state.baseline;
+  const varVib = b.samples > 1 ? b.m2Vib / (b.samples - 1) : 0.0001;
+  const stdVib = Math.sqrt(Math.max(1e-6, varVib));
+  const zVib = Math.max(0, (vibration - b.meanVib) / stdVib);
+  const zTilt = Math.max(0, deltaTilt / 0.1);
+  const zStaLta = Math.max(0, (stalta - 1.0) / 0.5);
+  const composite = 0.35 * zVib + 0.45 * zTilt + 0.20 * zStaLta;
+  return Number(composite.toFixed(2));
+}
+
 function createInitialNodes(): Map<string, Node> {
   const map = new Map<string, Node>();
   const initial = [
-    { nodeId: "NODE-01", role: "gateway" as const, pitch: 0.12, roll: -0.15, vibration: 0.038 },
-    { nodeId: "NODE-02", role: "field" as const, pitch: 0.25, roll: 0.08, vibration: 0.042 },
-    { nodeId: "NODE-03", role: "field" as const, pitch: -0.18, roll: 0.31, vibration: 0.035 }
+    { nodeId: "NODE-01", role: "gateway" as const, pitch: 0.12, roll: -0.15, vibration: 0.038, temp: 26.8, stalta: 1.02, eventType: 0, seq: 1 },
+    { nodeId: "NODE-02", role: "field" as const, pitch: 0.25, roll: 0.08, vibration: 0.042, temp: 27.1, stalta: 1.05, eventType: 0, seq: 1 },
+    { nodeId: "NODE-03", role: "field" as const, pitch: -0.18, roll: 0.31, vibration: 0.035, temp: 26.9, stalta: 0.98, eventType: 0, seq: 1 }
   ];
   const iso = new Date().toISOString();
   initial.forEach(p => {
@@ -51,7 +96,13 @@ function createInitialNodes(): Map<string, Node> {
       baselineRoll: p.roll,
       deltaPitch: 0,
       deltaRoll: 0,
-      deltaTilt: 0
+      deltaTilt: 0,
+      tiltRate: 0.0,
+      anomalyScore: 0.3,
+      stalta: p.stalta,
+      temp: p.temp,
+      eventType: p.eventType,
+      seq: p.seq
     });
   });
   return map;
@@ -92,38 +143,40 @@ export function setScenario(scenario: "normal" | "watch" | "warning" | "shift" |
 
   switch (scenario) {
     case "watch":
-      n1.pitch = 0.1; n1.roll = -0.1; n1.vibration = 0.038;
-      n2.pitch = 3.2; n2.roll = -0.6; n2.vibration = 0.052; // Isolated tilt > 2°
-      n3.pitch = -0.2; n3.roll = 0.3; n3.vibration = 0.035;
+      n1.pitch = 0.1; n1.roll = -0.1; n1.vibration = 0.038; n1.stalta = 1.05; n1.eventType = 0; n1.tiltRate = 0.1; n1.anomalyScore = 0.6;
+      n2.pitch = 3.2; n2.roll = -0.6; n2.vibration = 0.052; n2.stalta = 2.80; n2.eventType = 1; n2.tiltRate = 2.4; n2.anomalyScore = 3.8; // Isolated tilt > 2°
+      n3.pitch = -0.2; n3.roll = 0.3; n3.vibration = 0.035; n3.stalta = 0.95; n3.eventType = 0; n3.tiltRate = 0.1; n3.anomalyScore = 0.4;
       break;
 
     case "warning":
     case "shift":
       // Coherent subsidence: NODE-02 and NODE-03 both tilting >5° synchronously
-      n1.pitch = 1.2; n1.roll = 0.4; n1.vibration = 0.055;
-      n2.pitch = 5.8; n2.roll = -0.8; n2.vibration = 0.082;
-      n3.pitch = 5.4; n3.roll = 0.5; n3.vibration = 0.076;
+      n1.pitch = 1.2; n1.roll = 0.4; n1.vibration = 0.055; n1.stalta = 2.10; n1.eventType = 1; n1.tiltRate = 1.2; n1.anomalyScore = 2.5;
+      n2.pitch = 5.8; n2.roll = -0.8; n2.vibration = 0.082; n2.stalta = 5.40; n2.eventType = 2; n2.tiltRate = 6.5; n2.anomalyScore = 6.2;
+      n3.pitch = 5.4; n3.roll = 0.5; n3.vibration = 0.076; n3.stalta = 4.90; n3.eventType = 2; n3.tiltRate = 5.8; n3.anomalyScore = 5.8;
       break;
 
     case "critical":
     case "collapse":
       // Severe ground failure >8°
-      n1.pitch = 3.5; n1.roll = 1.2; n1.vibration = 0.125;
-      n2.pitch = 9.8; n2.roll = -4.2; n2.vibration = 0.320;
-      n3.pitch = 10.5; n3.roll = 3.8; n3.vibration = 0.280;
+      n1.pitch = 3.5; n1.roll = 1.2; n1.vibration = 0.125; n1.stalta = 4.20; n1.eventType = 2; n1.tiltRate = 4.1; n1.anomalyScore = 5.2;
+      n2.pitch = 9.8; n2.roll = -4.2; n2.vibration = 0.320; n2.stalta = 8.60; n2.eventType = 2; n2.tiltRate = 16.2; n2.anomalyScore = 9.5;
+      n3.pitch = 10.5; n3.roll = 3.8; n3.vibration = 0.280; n3.stalta = 7.90; n3.eventType = 2; n3.tiltRate = 14.8; n3.anomalyScore = 8.9;
       break;
 
     case "blast":
-      n1.vibration = 0.38;
-      n2.vibration = 0.44;
-      n3.vibration = 0.41;
+      n1.vibration = 0.38; n1.stalta = 6.5; n1.eventType = 3; n1.tiltRate = 0.2; n1.anomalyScore = 5.1;
+      n2.vibration = 0.44; n2.stalta = 7.8; n2.eventType = 3; n2.tiltRate = 0.3; n2.anomalyScore = 5.8;
+      n3.vibration = 0.41; n3.stalta = 7.1; n3.eventType = 3; n3.tiltRate = 0.2; n3.anomalyScore = 5.4;
+      state.suppressBlastUntil = time + 30000;
+      addEvent(1, "SCHEDULED/AUTOMATIC BLAST SUPPRESSION ACTIVE (30s). Transient vibration muted.");
       break;
 
     case "normal":
     default:
-      n1.pitch = 0.12; n1.roll = -0.15; n1.vibration = 0.038;
-      n2.pitch = 0.25; n2.roll = 0.08; n2.vibration = 0.042;
-      n3.pitch = -0.18; n3.roll = 0.31; n3.vibration = 0.035;
+      n1.pitch = 0.12; n1.roll = -0.15; n1.vibration = 0.038; n1.stalta = 1.02; n1.eventType = 0; n1.tiltRate = 0.05; n1.anomalyScore = 0.3;
+      n2.pitch = 0.25; n2.roll = 0.08; n2.vibration = 0.042; n2.stalta = 1.05; n2.eventType = 0; n2.tiltRate = 0.04; n2.anomalyScore = 0.3;
+      n3.pitch = -0.18; n3.roll = 0.31; n3.vibration = 0.035; n3.stalta = 0.98; n3.eventType = 0; n3.tiltRate = 0.02; n3.anomalyScore = 0.2;
       break;
   }
 
@@ -135,6 +188,12 @@ export function setScenario(scenario: "normal" | "watch" | "warning" | "shift" |
     n.deltaPitch = Number((n.pitch - n.baselinePitch).toFixed(2));
     n.deltaRoll = Number((n.roll - n.baselineRoll).toFixed(2));
     n.deltaTilt = Math.max(Math.abs(n.deltaPitch), Math.abs(n.deltaRoll));
+    n.temp = n.temp ?? 27.0;
+    n.seq = (n.seq ?? 0) + 1;
+    n.stalta = n.stalta ?? 1.0;
+    n.eventType = n.eventType ?? 0;
+    n.tiltRate = n.tiltRate ?? 0.0;
+    n.anomalyScore = n.anomalyScore ?? 0.3;
     
     if (n.deltaTilt >= 8.0) n.level = 3;
     else if (n.deltaTilt >= 5.0) n.level = 2;
@@ -163,6 +222,7 @@ export function resetSystem() {
   state.events = [];
   state.suppressBlastUntil = 0;
   state.mode = "simulated";
+  tiltHistory.clear();
   
   state.baseline.samples = 60;
   state.baseline.meanVib = 0.04;
@@ -175,6 +235,10 @@ export function resetSystem() {
     node.deltaPitch = 0;
     node.deltaRoll = 0;
     node.deltaTilt = 0;
+    node.tiltRate = 0;
+    node.anomalyScore = 0.2;
+    node.stalta = 1.0;
+    node.eventType = 0;
     node.level = 0;
     node.online = true;
     node.lastSeen = new Date().toISOString();
@@ -196,6 +260,8 @@ export function calibrate(nodeId?: string) {
     node.deltaPitch = 0;
     node.deltaRoll = 0;
     node.deltaTilt = 0;
+    node.tiltRate = 0;
+    node.anomalyScore = 0.2;
     node.level = 0;
     node.tiltStartedAt = undefined;
     node.baselineReady = true;
@@ -245,7 +311,24 @@ export function ingest(p: Packet) {
     if (b.samples >= 20) b.ready = true;
   }
 
+  const stalta = Number((p.stalta ?? old?.stalta ?? 1.0).toFixed(2));
+  const temp = Number((p.temp ?? old?.temp ?? 26.5).toFixed(1));
+  const eventType = p.evt ?? p.eventType ?? old?.eventType ?? 0;
+  const seq = p.seq ?? ((old?.seq ?? 0) + 1);
+
+  // Auto blast suppression triggered by firmware event classification (evt = 3: Blast)
+  if (eventType === 3 && time >= state.suppressBlastUntil) {
+    state.suppressBlastUntil = time + 30000; // 30s auto blast mute
+    addEvent(1, `AUTO-BLAST SUPPRESSION: ${p.nodeId} waveform classified as quarry blast. Transient vibration muted for 30s.`);
+  } else if (eventType === 2 && old?.eventType !== 2) {
+    addEvent(2, `SUBSIDENCE EVENT CONFIRMED: ${p.nodeId} confirmed permanent strata deformation shift.`);
+  }
+
   const isBlastSuppressed = time < state.suppressBlastUntil;
+
+  // Deformation rate and composite anomaly score
+  const tiltRate = computeTiltRate(p.nodeId, time, deltaTilt);
+  const anomalyScore = computeAnomalyScore(p.vibration, deltaTilt, stalta);
 
   // Risk Classification based on Relative Deviation from Baseline
   let level = 0;
@@ -275,7 +358,13 @@ export function ingest(p: Packet) {
     baselineRoll,
     deltaPitch,
     deltaRoll,
-    deltaTilt
+    deltaTilt,
+    tiltRate,
+    anomalyScore,
+    stalta,
+    temp,
+    eventType,
+    seq
   };
 
   state.nodes.set(p.nodeId, n);

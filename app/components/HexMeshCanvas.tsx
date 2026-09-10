@@ -10,6 +10,12 @@ export type MeshNode = {
   deltaPitch?: number;
   deltaRoll?: number;
   deltaTilt?: number;
+  tiltRate?: number;
+  anomalyScore?: number;
+  stalta?: number;
+  temp?: number;
+  eventType?: number;
+  seq?: number;
 };
 
 const label = ["NORMAL", "WATCH", "WARNING", "CRITICAL"];
@@ -90,7 +96,11 @@ export function HexMeshCanvas({
         const nodeColor = !isOnline ? offlineColor : central ? centralColor : color[node.level];
         const radius = central ? 90 : 82;
         const type = central ? "CENTRAL GATEWAY" : `MESH NODE ${String(index + 1).padStart(2, "0")}`;
-        const statusText = !isOnline ? "OFFLINE" : central ? "ACTIVE" : label[node.level];
+        
+        let statusText = !isOnline ? "OFFLINE" : central ? "ACTIVE" : label[node.level];
+        if (isOnline && node.eventType === 3) statusText = "QUARRY BLAST";
+        else if (isOnline && node.eventType === 2 && node.level >= 2) statusText = "SUBSIDENCE";
+        else if (isOnline && node.eventType === 1) statusText = "EVENT DETECTED";
 
         const dP = node.deltaPitch ?? node.pitch;
         const dR = node.deltaRoll ?? node.roll;
@@ -131,7 +141,7 @@ export function HexMeshCanvas({
             {/* Header: Node Type */}
             <text
               x={x}
-              y={y - (central ? 30 : 26)}
+              y={y - (central ? 32 : 28)}
               className="mesh-type"
               textAnchor="middle"
               dominantBaseline="middle"
@@ -142,7 +152,7 @@ export function HexMeshCanvas({
             {/* Title: Node ID */}
             <text
               x={x}
-              y={y - (central ? 10 : 8)}
+              y={y - (central ? 14 : 12)}
               className="mesh-name"
               textAnchor="middle"
               dominantBaseline="middle"
@@ -153,11 +163,12 @@ export function HexMeshCanvas({
             {/* Status Badge */}
             <text
               x={x}
-              y={y + (central ? 12 : 11)}
+              y={y + (central ? 4 : 3)}
               className="mesh-status"
-              fill={nodeColor}
+              fill={node.eventType === 3 ? "#F59E0B" : nodeColor}
               textAnchor="middle"
               dominantBaseline="middle"
+              style={{ fontSize: "10px", fontWeight: 700 }}
             >
               {statusText}
             </text>
@@ -165,7 +176,7 @@ export function HexMeshCanvas({
             {/* Pitch & Roll Relative Delta */}
             <text
               x={x}
-              y={y + (central ? 34 : 31)}
+              y={y + (central ? 24 : 21)}
               className="mesh-data"
               textAnchor="middle"
               dominantBaseline="middle"
@@ -173,16 +184,29 @@ export function HexMeshCanvas({
               {isOnline ? `ΔP: ${dP > 0 ? "+" : ""}${dP.toFixed(1)}° · ΔR: ${dR > 0 ? "+" : ""}${dR.toFixed(1)}°` : "NO SIGNAL"}
             </text>
 
-            {/* Vibration */}
+            {/* Vibration & STA/LTA */}
             <text
               x={x}
-              y={y + (central ? 49 : 45)}
+              y={y + (central ? 38 : 35)}
               className="mesh-data mesh-data-vib"
               textAnchor="middle"
               dominantBaseline="middle"
             >
-              {isOnline ? `VIB: ${node.vibration.toFixed(3)}g` : "DISCONNECTED"}
+              {isOnline ? `VIB: ${node.vibration.toFixed(3)}g · S:${(node.stalta ?? 1.0).toFixed(1)}` : "DISCONNECTED"}
             </text>
+
+            {/* Deformation Rate & Temperature */}
+            {isOnline && (
+              <text
+                x={x}
+                y={y + (central ? 52 : 48)}
+                style={{ fontSize: "8.5px", fill: "#94A3B8", fontFamily: "JetBrains Mono, monospace" }}
+                textAnchor="middle"
+                dominantBaseline="middle"
+              >
+                {`R: ${(node.tiltRate ?? 0).toFixed(1)}°/m · ${(node.temp ?? 27.0).toFixed(1)}°C`}
+              </text>
+            )}
           </g>
         );
       })}

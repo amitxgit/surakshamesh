@@ -28,7 +28,7 @@ export default function Dashboard() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [audioEnabled, setAudioEnabled] = useState(true);
-  const [trendHistory, setTrendHistory] = useState<Record<string, { tilt: number; vib: number }[]>>({});
+  const [trendHistory, setTrendHistory] = useState<Record<string, { tilt: number; vib: number; stalta: number }[]>>({});
   
   const audioContextRef = useRef<AudioContext | null>(null);
   const lastBeepRef = useRef<number>(0);
@@ -53,7 +53,8 @@ export default function Dashboard() {
             const dR = n.deltaRoll ?? n.roll ?? 0;
             const tilt = Math.max(Math.abs(dP), Math.abs(dR));
             const vib = n.vibration ?? 0;
-            currentList.push({ tilt, vib });
+            const stalta = n.stalta ?? 1.0;
+            currentList.push({ tilt, vib, stalta });
             if (currentList.length > 25) currentList.shift();
             updated[id] = currentList;
           });
@@ -123,13 +124,13 @@ export default function Dashboard() {
 
   const exportCSV = () => {
     if (!status) return;
-    const headers = "Timestamp,NodeID,Role,Status,Pitch,Roll,DeltaPitch,DeltaRoll,DeltaTilt,VibrationRMS,RiskLevel\n";
+    const headers = "Timestamp,NodeID,Role,Status,Pitch,Roll,DeltaPitch,DeltaRoll,DeltaTilt,VibrationRMS,RiskLevel,Seq,STALTA,RateDegMin,TempC,EventType,AnomalyScore\n";
     const nowISO = new Date().toISOString();
     const rows = status.nodes.map(n => {
       const dP = n.deltaPitch ?? n.pitch;
       const dR = n.deltaRoll ?? n.roll;
       const dTilt = Math.max(Math.abs(dP), Math.abs(dR));
-      return `${nowISO},${n.nodeId || n.id},${n.role},${n.online ? "ONLINE" : "OFFLINE"},${n.pitch},${n.roll},${dP.toFixed(2)},${dR.toFixed(2)},${dTilt.toFixed(2)},${n.vibration.toFixed(4)},${n.level}`;
+      return `${nowISO},${n.nodeId || n.id},${n.role},${n.online ? "ONLINE" : "OFFLINE"},${n.pitch},${n.roll},${dP.toFixed(2)},${dR.toFixed(2)},${dTilt.toFixed(2)},${n.vibration.toFixed(4)},${n.level},${n.seq ?? 0},${(n.stalta ?? 1.0).toFixed(2)},${(n.tiltRate ?? 0).toFixed(2)},${(n.temp ?? 27.0).toFixed(1)},${n.eventType ?? 0},${(n.anomalyScore ?? 0).toFixed(2)}`;
     }).join("\n");
 
     const blob = new Blob([headers + rows], { type: "text/csv" });
@@ -172,6 +173,14 @@ export default function Dashboard() {
     ? activeHistory.map((pt, i) => {
         const x = (i / (activeHistory.length - 1)) * 240;
         const y = 60 - Math.min(48, (pt.vib / 0.25) * 48);
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+      }).join(" ")
+    : "0,60 240,60";
+
+  const staltaPolyline = hasHistory
+    ? activeHistory.map((pt, i) => {
+        const x = (i / (activeHistory.length - 1)) * 240;
+        const y = 60 - Math.min(52, ((pt.stalta ?? 1.0) / 8.0) * 52);
         return `${x.toFixed(1)},${y.toFixed(1)}`;
       }).join(" ")
     : "0,60 240,60";
@@ -274,6 +283,9 @@ export default function Dashboard() {
               const isOnline = node.online;
               const dP = node.deltaPitch ?? node.pitch;
               const dR = node.deltaRoll ?? node.roll;
+              const eventType = node.eventType ?? 0;
+              const tiltRate = node.tiltRate ?? 0;
+              const temp = node.temp ?? 27.0;
 
               return (
                 <button
@@ -283,15 +295,32 @@ export default function Dashboard() {
                   style={{ opacity: isOnline ? 1 : 0.45 }}
                 >
                   <span className="state-dot" style={{ background: !isOnline ? "#64748B" : undefined }} />
-                  <span>
-                    <b>{id}</b>
-                    <small>{(node.role || "field").toUpperCase()} · {isOnline ? "ONLINE" : "OFFLINE"}</small>
+                  <span style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                      <b>{id}</b>
+                      {isOnline && eventType === 3 && (
+                        <span style={{ fontSize: "9px", background: "rgba(245, 158, 11, 0.25)", color: "#F59E0B", padding: "1px 4px", borderRadius: "3px", fontWeight: 700 }}>
+                          BLAST
+                        </span>
+                      )}
+                      {isOnline && eventType === 2 && (
+                        <span style={{ fontSize: "9px", background: "rgba(239, 68, 68, 0.25)", color: "#F87171", padding: "1px 4px", borderRadius: "3px", fontWeight: 700 }}>
+                          SUBSIDENCE
+                        </span>
+                      )}
+                      {isOnline && eventType === 1 && (
+                        <span style={{ fontSize: "9px", background: "rgba(59, 130, 246, 0.25)", color: "#60A5FA", padding: "1px 4px", borderRadius: "3px", fontWeight: 700 }}>
+                          PENDING
+                        </span>
+                      )}
+                    </div>
+                    <small>{(node.role || "field").toUpperCase()} · {isOnline ? `${temp.toFixed(1)}°C` : "OFFLINE"}</small>
                   </span>
                   <code>
                     {isOnline ? (
                       <>
-                        ΔP {dP > 0 ? "+" : ""}{dP.toFixed(1)}°<br />
-                        ΔR {dR > 0 ? "+" : ""}{dR.toFixed(1)}° · {node.vibration.toFixed(3)}g
+                        ΔP {dP > 0 ? "+" : ""}{dP.toFixed(1)}° · ΔR {dR > 0 ? "+" : ""}{dR.toFixed(1)}°<br />
+                        {node.vibration.toFixed(3)}g · <span style={{ color: tiltRate >= 5 ? "#F87171" : tiltRate >= 1 ? "#FBBF24" : "var(--color-text-muted)" }}>{tiltRate.toFixed(1)}°/m</span>
                       </>
                     ) : (
                       <>
@@ -349,6 +378,47 @@ export default function Dashboard() {
               </button>
             </div>
           </div>
+          {/* Active Event Banner */}
+          {status?.nodes.some(n => n.online && (n.eventType ?? 0) > 0) && (
+            <div style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "8px 14px",
+              marginBottom: "10px",
+              borderRadius: "6px",
+              fontSize: "12px",
+              fontWeight: 600,
+              background: status.nodes.some(n => n.online && n.eventType === 2)
+                ? "rgba(239, 68, 68, 0.15)"
+                : status.nodes.some(n => n.online && n.eventType === 3)
+                ? "rgba(245, 158, 11, 0.15)"
+                : "rgba(59, 130, 246, 0.15)",
+              border: `1px solid ${
+                status.nodes.some(n => n.online && n.eventType === 2)
+                  ? "rgba(239, 68, 68, 0.4)"
+                  : status.nodes.some(n => n.online && n.eventType === 3)
+                  ? "rgba(245, 158, 11, 0.4)"
+                  : "rgba(59, 130, 246, 0.4)"
+              }`,
+              color: status.nodes.some(n => n.online && n.eventType === 2)
+                ? "#F87171"
+                : status.nodes.some(n => n.online && n.eventType === 3)
+                ? "#FBBF24"
+                : "#60A5FA"
+            }}>
+              <span>
+                {status.nodes.some(n => n.online && n.eventType === 2)
+                  ? "🚨 ACTIVE SUBSIDENCE CONFIRMED: Permanent strata tilt deformation verified after seismic trigger."
+                  : status.nodes.some(n => n.online && n.eventType === 3)
+                  ? "💥 QUARRY BLAST CLASSIFIED: Transient vibration with zero permanent tilt offset. Alarms suppressed."
+                  : "⏳ SEISMIC EVENT DETECTED: Analyzing post-tremor ground stability (30s window)..."}
+              </span>
+              <span style={{ fontSize: "10px", opacity: 0.8, fontFamily: "JetBrains Mono" }}>
+                STA/LTA DETECTOR
+              </span>
+            </div>
+          )}
           <HexMeshCanvas
             nodes={status?.nodes ?? []}
             selectedId={selected?.nodeId || selected?.id || null}
@@ -385,11 +455,42 @@ export default function Dashboard() {
           </div>
           <div className="trend">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
-              <p className="panel-label" style={{ margin: 0 }}>NODE TREND — {selected?.nodeId || selected?.id || "--"}</p>
+              <p className="panel-label" style={{ margin: 0 }}>NODE TELEMETRY — {selected?.nodeId || selected?.id || "--"}</p>
               <span style={{ fontSize: "10px", fontFamily: "JetBrains Mono", color: "#38BDF8" }}>
                 ΔTilt: {latestTilt.toFixed(1)}° · Vib: {latestVib.toFixed(3)}g
               </span>
             </div>
+
+            {/* Diagnostic Badges for Selected Node */}
+            {selected && (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "6px", marginBottom: "8px", fontSize: "10px" }}>
+                <div style={{ background: "rgba(255,255,255,0.03)", padding: "4px 6px", borderRadius: "4px", border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <div style={{ color: "var(--color-text-muted)", fontSize: "9px" }}>DEFORMATION RATE</div>
+                  <strong style={{ color: (selected.tiltRate ?? 0) >= 5 ? "#F43F5E" : (selected.tiltRate ?? 0) >= 1 ? "#FB923C" : "#34D399" }}>
+                    {(selected.tiltRate ?? 0).toFixed(1)}°/min
+                  </strong>
+                </div>
+                <div style={{ background: "rgba(255,255,255,0.03)", padding: "4px 6px", borderRadius: "4px", border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <div style={{ color: "var(--color-text-muted)", fontSize: "9px" }}>STA/LTA RATIO</div>
+                  <strong style={{ color: (selected.stalta ?? 1.0) >= 4.0 ? "#F59E0B" : "#10B981" }}>
+                    {(selected.stalta ?? 1.0).toFixed(2)}x
+                  </strong>
+                </div>
+                <div style={{ background: "rgba(255,255,255,0.03)", padding: "4px 6px", borderRadius: "4px", border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <div style={{ color: "var(--color-text-muted)", fontSize: "9px" }}>ANOMALY Z-SCORE</div>
+                  <strong style={{ color: (selected.anomalyScore ?? 0) >= 3.0 ? "#F43F5E" : "#38BDF8" }}>
+                    {(selected.anomalyScore ?? 0).toFixed(1)}σ
+                  </strong>
+                </div>
+                <div style={{ background: "rgba(255,255,255,0.03)", padding: "4px 6px", borderRadius: "4px", border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <div style={{ color: "var(--color-text-muted)", fontSize: "9px" }}>MPU TEMP</div>
+                  <strong style={{ color: "#94A3B8" }}>
+                    {(selected.temp ?? 27.0).toFixed(1)}°C
+                  </strong>
+                </div>
+              </div>
+            )}
+
             <div className="sparkline" style={{ background: "rgba(3, 7, 18, 0.6)", borderRadius: "6px", padding: "4px", border: "1px solid rgba(255,255,255,0.05)" }}>
               <svg viewBox="0 0 240 68" style={{ width: "100%", height: "64px", display: "block" }}>
                 {/* Horizontal reference grid lines */}
@@ -404,6 +505,16 @@ export default function Dashboard() {
                   stroke="#A855F7" 
                   strokeWidth="1.5" 
                   strokeOpacity="0.7"
+                />
+
+                {/* Live STA/LTA ratio sparkline */}
+                <polyline 
+                  points={staltaPolyline} 
+                  fill="none" 
+                  stroke="#10B981" 
+                  strokeWidth="1.5" 
+                  strokeDasharray="3,3"
+                  strokeOpacity="0.85"
                 />
 
                 {/* Live Delta Tilt sparkline */}
@@ -427,8 +538,9 @@ export default function Dashboard() {
               </svg>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", marginTop: "6px", fontSize: "9px", color: "var(--color-text-muted)" }}>
-              <span style={{ color: "#38BDF8" }}>● Delta Tilt (0°–8°+)</span>
+              <span style={{ color: "#38BDF8" }}>● Delta Tilt</span>
               <span style={{ color: "#A855F7" }}>● Vibration RMS</span>
+              <span style={{ color: "#10B981" }}>┄ STA/LTA Ratio</span>
               <span>Rolling 25s</span>
             </div>
           </div>
@@ -451,9 +563,10 @@ export default function Dashboard() {
               <thead>
                 <tr>
                   <th>METRIC</th>
-                  <th>NORMAL (GREEN)</th>
-                  <th>WATCH (YELLOW)</th>
-                  <th>CRITICAL (RED)</th>
+                  <th>NORMAL (0)</th>
+                  <th>WATCH (1)</th>
+                  <th>WARNING (2)</th>
+                  <th>CRITICAL (3)</th>
                 </tr>
               </thead>
               <tbody>
@@ -461,19 +574,36 @@ export default function Dashboard() {
                   <td>Delta Tilt (ΔP/ΔR)</td>
                   <td>&lt; 2.0°</td>
                   <td>2.0° – 5.0°</td>
-                  <td>&gt; 8.0°</td>
+                  <td>5.0° – 8.0° (sustained &gt;3s)</td>
+                  <td>&gt; 8.0° (immediate)</td>
                 </tr>
                 <tr>
                   <td>Vibration RMS</td>
                   <td>&lt; 0.15g</td>
-                  <td>0.15g – 0.40g</td>
-                  <td>&gt; 0.40g sustained</td>
+                  <td>≥ 0.15g transient</td>
+                  <td>≥ 0.25g continuous</td>
+                  <td>&gt; 0.40g severe failure</td>
                 </tr>
                 <tr>
-                  <td>Multi-Node Coherence</td>
-                  <td>Isolated</td>
-                  <td>2+ nodes creeping</td>
-                  <td>Synchronous Collapse</td>
+                  <td>Deformation Rate</td>
+                  <td>&lt; 1.0°/min</td>
+                  <td>1.0° – 3.0°/min</td>
+                  <td>3.0° – 5.0°/min</td>
+                  <td>&gt; 5.0°/min rapid sag</td>
+                </tr>
+                <tr>
+                  <td>STA/LTA Seismic Ratio</td>
+                  <td>&lt; 2.0x (quiescent)</td>
+                  <td>2.0x – 4.0x (minor)</td>
+                  <td>&gt; 4.0x (event trigger)</td>
+                  <td>&gt; 8.0x (collapse onset)</td>
+                </tr>
+                <tr>
+                  <td>Blast vs. Subsidence</td>
+                  <td>No event</td>
+                  <td>30s evaluation window</td>
+                  <td>Permanent tilt confirmed (&gt;0.5°)</td>
+                  <td>Auto-muted if 0° tilt retained</td>
                 </tr>
               </tbody>
             </table>

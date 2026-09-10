@@ -132,28 +132,29 @@ Step 5: Broadcast Over the Air (ESP-NOW Radio)
    - A background script reads the serial USB port and forwards the live telemetry 
      data to the web application over fast WebSockets and HTTP APIs.
 
-3. Real-Time Web Dashboard (Next.js 16, React 19 & Tailwind CSS):
-   - Shows a beautiful interactive 3D map of hexagonal cells representing the mine.
+3. Real-Time Web Dashboard (Next.js 15, React 19 & Tailwind CSS):
+   - Shows a beautiful interactive map of hexagonal cells representing the mine.
    - When you physically tilt a node on your desk or wooden plank, the matching 
      hexagon on the screen turns from glowing green to bright red in under 50 milliseconds!
-   - Features sound alerts, 3D tilt models, and live CSV data logging.
+   - Features sound alerts, live deformation rate, STA/LTA ratio sparklines, and live CSV data logging.
 
 
 ================================================================================
-6. WHERE DOES THE "AI" COME IN? (Artificial Intelligence Explained)
+6. WHERE DOES THE "ALGORITHM & INTELLIGENCE" COME IN?
 ================================================================================
-1. Isolation Forest Machine Learning:
-   - Learns the quiet baseline of the mine surface.
-   - Flags anomalous deformation trends before visible cracks appear.
+1. Dynamic Baseline & Multi-Metric Z-Score Anomaly Detector:
+   - Continuously learns ambient ground quiet baselines using Welford's algorithm.
+   - Computes real-time composite Z-scores across vibration, tilt shift, and STA/LTA ratio.
+   - Flags anomalous ground movements before visible cracks appear without needing external cloud dependencies.
 
-2. Blast vs. Subsidence Classifier:
-   - Dynamite blasting causes a huge shake, but tilt quickly returns to normal.
-   - Real subsidence causes a shake AND leaves permanent ground tilt.
-   - Our system avoids false alarms during mine blast hours.
+2. STA/LTA Seismic Trigger & Blast-vs-Subsidence Classifier:
+   - Dynamite blasting causes a huge shake, but tilt quickly returns to normal (zero residual tilt).
+   - Real subsidence causes dynamic vibration AND leaves permanent ground tilt (>0.5°).
+   - The firmware STA/LTA state machine automatically distinguishes quarry blasts from real subsidence.
 
 3. Spatial Coherence (Mesh Teamwork):
-   - 1 node shaking = local noise / vehicle.
-   - 3 adjacent nodes tilting together = confirmed large-scale strata subsidence!
+   - 1 node shaking = local noise / heavy dumper truck passing.
+   - Multiple adjacent nodes tilting together coherently = confirmed large-scale strata subsidence!
 
 
 ================================================================================
